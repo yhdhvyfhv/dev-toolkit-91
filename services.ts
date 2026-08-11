@@ -1,30 +1,44 @@
-import axios, { AxiosError } from 'axios';
+// TypeScript services module
 
-interface ApiResponse<T> {
-  data: T;
-  error?: string;
+// UserService interface defines the structure of user data
+interface UserService {
+    getUser(id: number): Promise<User | null>;
+    createUser(user: User): Promise<User>;
 }
 
-export async function fetchData<T>(url: string): Promise<ApiResponse<T>> {
-  try {
-    const response = await axios.get<T>(url);
-    return { data: response.data };
-  } catch (error) {
-    const axiosError = error as AxiosError;
-    if (axiosError.response) {
-      // Server responded with a status code outside 2xx range
-      return { data: null as any, error: axiosError.response.data };
-    } else if (axiosError.request) {
-      // No response was received
-      return { data: null as any, error: 'No response from server' };
-    } else {
-      // Something happened while setting up the request
-      return { data: null as any, error: axiosError.message };
+// User interface representing a user object
+interface User {
+    id: number;
+    name: string;
+    email: string;
+}
+
+// Sample in-memory user database
+const usersDB: User[] = [];
+
+// Implementation of UserService
+class UserServiceImpl implements UserService {
+    // Fetch a user by ID
+    async getUser(id: number): Promise<User | null> {
+        return usersDB.find(user => user.id === id) || null;
     }
-  }
+
+    // Create a new user
+    async createUser(user: User): Promise<User> {
+        usersDB.push(user);
+        return user;
+    }
 }
 
-export function handleApiError(error: string): void {
-  console.error('API Error:', error);
-  // Handle logging or displaying the error as necessary
+// Example usage of UserService
+const userService: UserService = new UserServiceImpl();
+
+// Creating a user and fetching it back
+async function exampleUsage() {
+    const newUser: User = { id: 1, name: 'Alice', email: 'alice@example.com' };
+    await userService.createUser(newUser);
+    const fetchedUser = await userService.getUser(1);
+    console.log(fetchedUser);
 }
+
+exampleUsage();
