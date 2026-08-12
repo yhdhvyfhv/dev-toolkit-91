@@ -1,44 +1,40 @@
-// TypeScript services module
+import axios, { AxiosError } from 'axios';
 
-// UserService interface defines the structure of user data
-interface UserService {
-    getUser(id: number): Promise<User | null>;
-    createUser(user: User): Promise<User>;
-}
+type RequestConfig = {
+  url: string;
+  method?: 'GET' | 'POST';
+  data?: any;
+  retries?: number;
+  delay?: number;
+};
 
-// User interface representing a user object
-interface User {
-    id: number;
-    name: string;
-    email: string;
-}
+const defaultRetries = 3;
+const defaultDelay = 1000;
 
-// Sample in-memory user database
-const usersDB: User[] = [];
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Implementation of UserService
-class UserServiceImpl implements UserService {
-    // Fetch a user by ID
-    async getUser(id: number): Promise<User | null> {
-        return usersDB.find(user => user.id === id) || null;
+async function retryRequest(config: RequestConfig): Promise<any> {
+  const retries = config.retries || defaultRetries;
+  const delayTime = config.delay || defaultDelay;
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await axios.request({
+        url: config.url,
+        method: config.method,
+        data: config.data,
+      });
+      return response.data;
+    } catch (error) {
+      if (i < retries - 1) {
+        console.warn(`Retrying request... Attempt ${i + 2} of ${retries}`);
+        await delay(delayTime);
+      } else {
+        const axiosError = error as AxiosError;
+        throw new Error(`Request failed after ${retries} attempts: ${axiosError.message}`);
+      }
     }
-
-    // Create a new user
-    async createUser(user: User): Promise<User> {
-        usersDB.push(user);
-        return user;
-    }
+  }
 }
 
-// Example usage of UserService
-const userService: UserService = new UserServiceImpl();
-
-// Creating a user and fetching it back
-async function exampleUsage() {
-    const newUser: User = { id: 1, name: 'Alice', email: 'alice@example.com' };
-    await userService.createUser(newUser);
-    const fetchedUser = await userService.getUser(1);
-    console.log(fetchedUser);
-}
-
-exampleUsage();
+export { retryRequest };
