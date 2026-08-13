@@ -1,47 +1,34 @@
-export interface GameConfig {
-    title: string;
-    resolution: Resolution;
-    audio: AudioSettings;
-    controls: Controls;
-}
+import fs from 'fs';
+import path from 'path';
 
-export interface Resolution {
-    width: number;
-    height: number;
-}
-
-export interface AudioSettings {
-    volume: number;
-    mute: boolean;
-}
-
-export interface Controls {
-    jump: string;
-    moveLeft: string;
-    moveRight: string;
-    shoot: string;
+interface GameConfig {
+  resolution: string;
+  volume: number;
+  controls: { [key: string]: string };
 }
 
 const defaultConfig: GameConfig = {
-    title: 'My Awesome Game',
-    resolution: {
-        width: 1920,
-        height: 1080
-    },
-    audio: {
-        volume: 80,
-        mute: false
-    },
-    controls: {
-        jump: 'Space',
-        moveLeft: 'A',
-        moveRight: 'D',
-        shoot: 'LeftMouse'
-    }
+  resolution: '1920x1080',
+  volume: 80,
+  controls: {
+    jump: 'SPACE',
+    shoot: 'CTRL'
+  }
 };
 
-export const getConfig = (): GameConfig => defaultConfig;
+function loadConfig(customConfigPath: string): GameConfig {
+  const configPath = path.resolve(customConfigPath);
+  let userConfig: Partial<GameConfig>;
 
-export const updateConfig = (newConfig: Partial<GameConfig>): GameConfig => {
-    return { ...defaultConfig, ...newConfig };
-};
+  try {
+    const configFile = fs.readFileSync(configPath, 'utf-8');
+    userConfig = JSON.parse(configFile);
+  } catch (error) {
+    console.warn('Could not read config. Using defaults.');
+    userConfig = {};
+  }
+
+  return { ...defaultConfig, ...userConfig };
+}
+
+export { loadConfig, GameConfig };
