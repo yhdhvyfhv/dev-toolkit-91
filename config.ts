@@ -1,25 +1,33 @@
-export interface NetworkOptions {  retries?: number;  delay?: number;}
+/*
+ * Configuration settings for the gaming app.
+ * This file includes game modes, API endpoints, and feature toggles.
+ */
 
-export async function fetchWithRetry(url: string, options?: NetworkOptions): Promise<Response> {
-  const { retries = 3, delay = 1000 } = options || {};
+// Game modes available in the application.
+type GameMode = 'single-player' | 'multiplayer' | 'co-op';
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      return response;
-    } catch (error) {
-      if (attempt < retries) {
-        console.warn(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`);
-        await new Promise(res => setTimeout(res, delay));
-      } else {
-        throw new Error(`Failed after ${retries + 1} attempts: ${error.message}`);
-      }
-    }
-  }
-  throw new Error(`Request failed after ${retries} retries`);
+// API settings structure.
+interface ApiConfig {
+    baseUrl: string;
+    timeout: number;
 }
 
-export const DEFAULT_OPTIONS: NetworkOptions = {  retries: 3,  delay: 1000 };
+// Main configuration interface that combines everything.
+interface Config {
+    mode: GameMode;
+    api: ApiConfig;
+    enableDebug: boolean;
+}
+
+// Default configuration settings.
+const defaultConfig: Config = {
+    mode: 'single-player',
+    api: {
+        baseUrl: 'https://api.gamingapp.com',
+        timeout: 5000,
+    },
+    enableDebug: false,
+};
+
+export default defaultConfig;
+export type { GameMode, ApiConfig, Config };
