@@ -1,33 +1,47 @@
-/*
- * Configuration settings for the gaming app.
- * This file includes game modes, API endpoints, and feature toggles.
- */
-
-// Game modes available in the application.
-type GameMode = 'single-player' | 'multiplayer' | 'co-op';
-
-// API settings structure.
-interface ApiConfig {
-    baseUrl: string;
-    timeout: number;
+export interface GameConfig {
+    title: string;
+    resolution: Resolution;
+    audio: AudioSettings;
+    controls: Controls;
 }
 
-// Main configuration interface that combines everything.
-interface Config {
-    mode: GameMode;
-    api: ApiConfig;
-    enableDebug: boolean;
+export interface Resolution {
+    width: number;
+    height: number;
 }
 
-// Default configuration settings.
-const defaultConfig: Config = {
-    mode: 'single-player',
-    api: {
-        baseUrl: 'https://api.gamingapp.com',
-        timeout: 5000,
+export interface AudioSettings {
+    volume: number;
+    mute: boolean;
+}
+
+export interface Controls {
+    jump: string;
+    moveLeft: string;
+    moveRight: string;
+    shoot: string;
+}
+
+const defaultConfig: GameConfig = {
+    title: 'My Awesome Game',
+    resolution: {
+        width: 1920,
+        height: 1080
     },
-    enableDebug: false,
+    audio: {
+        volume: 80,
+        mute: false
+    },
+    controls: {
+        jump: 'Space',
+        moveLeft: 'A',
+        moveRight: 'D',
+        shoot: 'LeftMouse'
+    }
 };
 
-export default defaultConfig;
-export type { GameMode, ApiConfig, Config };
+export const getConfig = (): GameConfig => defaultConfig;
+
+export const updateConfig = (newConfig: Partial<GameConfig>): GameConfig => {
+    return { ...defaultConfig, ...newConfig };
+};
