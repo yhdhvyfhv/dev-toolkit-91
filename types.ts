@@ -1,1 +1,38 @@
-type GameEntity = { id: string; name: string; position: { x: number; y: number }; velocity: { dx: number; dy: number }; active: boolean; update: (deltaTime: number) => void; }; type Player = GameEntity & { health: number; score: number; }; type Enemy = GameEntity & { damage: number; }; type GameState = { players: Player[]; enemies: Enemy[]; time: number; isGameOver: boolean; updateGame: (deltaTime: number) => void; }; const updateEntity = (entity: GameEntity, deltaTime: number) => { entity.position.x += entity.velocity.dx * deltaTime; entity.position.y += entity.velocity.dy * deltaTime; }; const checkCollision = (a: GameEntity, b: GameEntity): boolean => { return (a.position.x < b.position.x + 1 && a.position.x + 1 > b.position.x && a.position.y < b.position.y + 1 && a.position.y + 1 > b.position.y); };
+export type Player = {
+    id: string;
+    name: string;
+    score: number;
+    level: number;
+};
+
+export type GameSettings = {
+    resolution: string;
+    fullScreen: boolean;
+    volume: number;
+};
+
+export type GameState = {
+    players: Player[];
+    currentLevel: number;
+    isGameActive: boolean;
+};
+
+export interface IGameService {
+    initializeGame(settings: GameSettings): void;
+    startGame(): void;
+    pauseGame(): void;
+    endGame(): void;
+    addPlayer(player: Player): void;
+    removePlayer(playerId: string): void;
+};
+
+export type Scoreboard = {
+    leaderboard: Player[];
+    recordScore(playerId: string, score: number): void;
+};
+
+export const defaultSettings: GameSettings = {
+    resolution: '1920x1080',
+    fullScreen: true,
+    volume: 70,
+};
