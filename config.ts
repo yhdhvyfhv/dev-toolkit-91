@@ -1,7 +1,17 @@
-interface GameConfig {  playerName: string;  difficulty: 'easy' | 'medium' | 'hard';  resolution: { width: number; height: number; };  volume: number;}
+const DEFAULT_RESOLUTION = { width: 1920, height: 1080 };
+const MAX_PLAYERS = 100;
+const ENABLE_DEBUG_MODE = process.env.DEBUG === 'true';
 
-const defaultConfig: GameConfig = {  playerName: 'Player1',  difficulty: 'medium',  resolution: { width: 1920, height: 1080 },  volume: 50};
+interface GameConfig {
+    resolution: { width: number; height: number; };
+    maxPlayers: number;
+    debugMode: boolean;
+}
 
-const loadConfig = (configFile: string): GameConfig => {  try {    const fileContent = Deno.readTextFileSync(configFile);    const parsedConfig = JSON.parse(fileContent);    return { ...defaultConfig, ...parsedConfig };  } catch (error) {    console.error('Error loading config:', error);    return defaultConfig;  }};
+const gameConfig: GameConfig = {
+    resolution: DEFAULT_RESOLUTION,
+    maxPlayers: MAX_PLAYERS,
+    debugMode: ENABLE_DEBUG_MODE,
+};
 
-export { loadConfig, defaultConfig, GameConfig };
+export { gameConfig, DEFAULT_RESOLUTION, MAX_PLAYERS };
