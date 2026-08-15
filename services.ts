@@ -1,40 +1,13 @@
-import axios, { AxiosError } from 'axios';
+export interface Player {  id: string;  name: string;  health: number;  score: number;}
 
-type RequestConfig = {
-  url: string;
-  method?: 'GET' | 'POST';
-  data?: any;
-  retries?: number;
-  delay?: number;
-};
+export class GameService {  private players: Player[] = [];
 
-const defaultRetries = 3;
-const defaultDelay = 1000;
+  addPlayer(player: Player): void {    this.players.push(player);  }
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  removePlayer(playerId: string): boolean {    const index = this.players.findIndex(player => player.id === playerId);    if (index !== -1) {      this.players.splice(index, 1);      return true;    }    return false;  }
 
-async function retryRequest(config: RequestConfig): Promise<any> {
-  const retries = config.retries || defaultRetries;
-  const delayTime = config.delay || defaultDelay;
+  getPlayerScore(playerId: string): number | null {    const player = this.players.find(player => player.id === playerId);    return player ? player.score : null;  }
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await axios.request({
-        url: config.url,
-        method: config.method,
-        data: config.data,
-      });
-      return response.data;
-    } catch (error) {
-      if (i < retries - 1) {
-        console.warn(`Retrying request... Attempt ${i + 2} of ${retries}`);
-        await delay(delayTime);
-      } else {
-        const axiosError = error as AxiosError;
-        throw new Error(`Request failed after ${retries} attempts: ${axiosError.message}`);
-      }
-    }
-  }
-}
+  updatePlayerHealth(playerId: string, health: number): boolean {    const player = this.players.find(player => player.id === playerId);    if (player) {      player.health = health;      return true;    }    return false;  }
 
-export { retryRequest };
+  getAllPlayers(): Player[] {    return this.players;  }}
