@@ -1,32 +1,35 @@
-type GameService = {
-    startGame: (gameId: string) => void;
-    endGame: (gameId: string, score: number) => void;
-    getGameStatus: (gameId: string) => string;
-};
+import axios from 'axios';
 
-class GameManager implements GameService {
-    private games: Record<string, { status: string; score: number }> = {};
-
-    startGame(gameId: string): void {
-        this.games[gameId] = { status: 'running', score: 0 };
-        console.log(`Game ${gameId} started.`);
-    }
-
-    endGame(gameId: string, score: number): void {
-        if (this.games[gameId]) {
-            this.games[gameId].status = 'ended';
-            this.games[gameId].score = score;
-            console.log(`Game ${gameId} ended with score: ${score}.`);
-        } else {
-            console.log(`Game ${gameId} not found.`);
+export const fetchWithRetry = async (url: string, retries: number = 3, delay: number = 1000) => {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            const response = await axios.get(url);
+            return response.data;
+        } catch (error) {
+            if (i < retries) {
+                console.warn(`Attempt ${i + 1} failed. Retrying in ${delay}ms...`);
+                await new Promise(res => setTimeout(res, delay));
+            } else {
+                console.error('All retry attempts failed:', error);
+                throw error;
+            }
         }
     }
+};
 
-    getGameStatus(gameId: string): string {
-        return this.games[gameId]?.status || 'not found';
+export const postWithRetry = async (url: string, data: any, retries: number = 3, delay: number = 1000) => {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            const response = await axios.post(url, data);
+            return response.data;
+        } catch (error) {
+            if (i < retries) {
+                console.warn(`Attempt ${i + 1} failed. Retrying in ${delay}ms...`);
+                await new Promise(res => setTimeout(res, delay));
+            } else {
+                console.error('All retry attempts failed:', error);
+                throw error;
+            }
+        }
     }
-}
-
-const gameService = new GameManager();
-gameService.startGame('level1');
-gameService.endGame('level1', 100);
+};
