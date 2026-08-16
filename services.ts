@@ -1,13 +1,32 @@
-export interface Player {  id: string;  name: string;  health: number;  score: number;}
+type GameService = {
+    startGame: (gameId: string) => void;
+    endGame: (gameId: string, score: number) => void;
+    getGameStatus: (gameId: string) => string;
+};
 
-export class GameService {  private players: Player[] = [];
+class GameManager implements GameService {
+    private games: Record<string, { status: string; score: number }> = {};
 
-  addPlayer(player: Player): void {    this.players.push(player);  }
+    startGame(gameId: string): void {
+        this.games[gameId] = { status: 'running', score: 0 };
+        console.log(`Game ${gameId} started.`);
+    }
 
-  removePlayer(playerId: string): boolean {    const index = this.players.findIndex(player => player.id === playerId);    if (index !== -1) {      this.players.splice(index, 1);      return true;    }    return false;  }
+    endGame(gameId: string, score: number): void {
+        if (this.games[gameId]) {
+            this.games[gameId].status = 'ended';
+            this.games[gameId].score = score;
+            console.log(`Game ${gameId} ended with score: ${score}.`);
+        } else {
+            console.log(`Game ${gameId} not found.`);
+        }
+    }
 
-  getPlayerScore(playerId: string): number | null {    const player = this.players.find(player => player.id === playerId);    return player ? player.score : null;  }
+    getGameStatus(gameId: string): string {
+        return this.games[gameId]?.status || 'not found';
+    }
+}
 
-  updatePlayerHealth(playerId: string, health: number): boolean {    const player = this.players.find(player => player.id === playerId);    if (player) {      player.health = health;      return true;    }    return false;  }
-
-  getAllPlayers(): Player[] {    return this.players;  }}
+const gameService = new GameManager();
+gameService.startGame('level1');
+gameService.endGame('level1', 100);
