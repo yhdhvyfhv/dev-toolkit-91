@@ -1,17 +1,19 @@
-const DEFAULT_RESOLUTION = { width: 1920, height: 1080 };
-const MAX_PLAYERS = 100;
-const ENABLE_DEBUG_MODE = process.env.DEBUG === 'true';
+interface RetryOptions { attempts: number; delay: number; }
 
-interface GameConfig {
-    resolution: { width: number; height: number; };
-    maxPlayers: number;
-    debugMode: boolean;
+async function retry<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
+    const { attempts, delay } = options;
+    let lastError;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error;
+            if (attempt < attempts - 1) {
+                await new Promise(res => setTimeout(res, delay));
+            }
+        }
+    }
+    throw lastError;
 }
 
-const gameConfig: GameConfig = {
-    resolution: DEFAULT_RESOLUTION,
-    maxPlayers: MAX_PLAYERS,
-    debugMode: ENABLE_DEBUG_MODE,
-};
-
-export { gameConfig, DEFAULT_RESOLUTION, MAX_PLAYERS };
+export { retry, RetryOptions };
