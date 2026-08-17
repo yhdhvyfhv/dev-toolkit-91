@@ -1,44 +1,39 @@
-export function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T {
-    let timeout: NodeJS.Timeout;
-    return function executedFunction(...args: any[]) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    } as T;
+export function safeParseJson<T>(jsonString: string): T | null {
+    try {
+        return JSON.parse(jsonString);
+    } catch (error) {
+        console.error('JSON parsing error:', error);
+        return null;
+    }
 }
 
-export function throttle<T extends (...args: any[]) => void>(func: T, limit: number): T {
-    let lastFunc: NodeJS.Timeout;
-    let lastRan: number;
-    return function executedFunction(...args: any[]) {
-        const context = this;
-        if (!lastRan) {
-            func.apply(context, args);
-            lastRan = Date.now();
-        }
-        clearTimeout(lastFunc);
-        lastFunc = setTimeout(function() {
-            if ((Date.now() - lastRan) >= limit) {
-                func.apply(context, args);
-                lastRan = Date.now();
+export function assertIsValidPlayer(player: any): asserts player is Player {
+    if (!player || typeof player.name !== 'string' || typeof player.score !== 'number') {
+        throw new Error('Invalid player object');
+    }
+}
+
+export function asyncFetchGameData(url: string): Promise<GameData> {
+    return fetch(url) 
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Network response was not okay: ${response.statusText}`);
             }
-        }, 100);
-    } as T;
+            return response.json();
+        })
+        .catch(error => {
+            console.error('Error fetching game data:', error);
+            throw error;  // Rethrow for further handling
+        });
 }
 
-export function memoize<T extends (...args: any[]) => any>(func: T): T {
-    const cache: { [key: string]: ReturnType<T> } = {};
-    return function (...args: any[]) {
-        const key = JSON.stringify(args);
-        if (cache[key]) {
-            return cache[key];
-        } else {
-            const result = func(...args);
-            cache[key] = result;
-            return result;
+export function retry<T>(fn: () => Promise<T>, retries: number = 3): Promise<T> {
+    return fn().catch((error) => {
+        if (retries > 0) {
+            console.warn(`Retrying... Attempts left: ${retries}`);
+            return retry(fn, retries - 1);
         }
-    } as T;
+        console.error('Max retries reached:', error);
+        throw error;
+    });
 }
