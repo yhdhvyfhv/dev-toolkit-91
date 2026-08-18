@@ -1,39 +1,27 @@
-import { GameState, Player } from './types';
+import { GameEvent, Player } from './types';
 
-class GameService {
-  private state: GameState;
+export class GameService {
+    private players: Player[] = [];
 
-  constructor(initialState: GameState) {
-    this.state = initialState;
-  }
-
-  public addPlayer(player: Player): void {
-    if (!this.state.players.some(p => p.id === player.id)) {
-      this.state.players.push(player);
+    public addPlayer(player: Player): void {
+        this.players.push(player);
+        this.broadcastEvent('player-added', player);
     }
-  }
 
-  public removePlayer(playerId: string): void {
-    this.state.players = this.state.players.filter(p => p.id !== playerId);
-  }
-
-  public startGame(): void {
-    if (!this.state.isRunning) {
-      this.state.isRunning = true;
-      this.state.startTime = new Date();
+    public removePlayer(playerId: string): void {
+        this.players = this.players.filter(player => player.id !== playerId);
+        this.broadcastEvent('player-removed', { id: playerId });
     }
-  }
 
-  public endGame(): void {
-    if (this.state.isRunning) {
-      this.state.isRunning = false;
-      this.state.endTime = new Date();
+    public getPlayers(): Player[] {
+        return this.players;
     }
-  }
 
-  public getCurrentState(): GameState {
-    return this.state;
-  }
+    private broadcastEvent(eventName: string, payload: any): void {
+        // Imagine this method sends events to clients
+        console.log(`Broadcasting: ${eventName}`, payload);
+    }
 }
 
-export default GameService;
+const gameService = new GameService();
+export default gameService;
