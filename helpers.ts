@@ -1,38 +1,35 @@
-export const isArray = (input: any): input is any[] => Array.isArray(input);
+import fs from 'fs';
+import path from 'path';
+import winston from 'winston';
 
-export const deepClone = <T>(obj: T): T => {
-    return JSON.parse(JSON.stringify(obj));
+const logDir = path.join(__dirname, 'logs');
+
+if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir);
+}
+
+const transport = new winston.transports.File({
+    filename: path.join(logDir, 'app-%DATE%.log'),
+    datePattern: 'YYYY-MM-DD',
+    zippedArchive: true,
+    maxSize: '20m',
+    maxFiles: '14d',
+});
+
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+    ),
+    transports: [transport],
+});
+
+export const log = (level: string, message: string) => {
+    logger.log({ level, message });
 };
 
-export const throttle = (func: Function, limit: number) => {
-    let lastFunc: ReturnType<typeof setTimeout>;
-    let lastRan: number;
-
-    return function (...args: any[]) {
-        const context = this;
-        if (!lastRan) {
-            func.apply(context, args);
-            lastRan = Date.now();
-        } else {
-            clearTimeout(lastFunc);
-            lastFunc = setTimeout(function () {
-                if ((Date.now() - lastRan) >= limit) {
-                    func.apply(context, args);
-                    lastRan = Date.now();
-                }
-            }, limit - (Date.now() - lastRan));
-        }
-    };
-};
-
-export const formatDate = (date: Date, format: string): string => {
-    const options: Intl.DateTimeFormatOptions = {};
-    if (format.includes('year')) options.year = 'numeric';
-    if (format.includes('month')) options.month = 'short';
-    if (format.includes('day')) options.day = 'numeric';
-    return new Intl.DateTimeFormat('en-US', options).format(date);
-};
-
-export const randomInt = (min: number, max: number): number => {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-};
+export const info = (message: string) => log('info', message);
+export const error = (message: string) => log('error', message);
+export const warn = (message: string) => log('warn', message);
+export const debug = (message: string) => log('debug', message);
