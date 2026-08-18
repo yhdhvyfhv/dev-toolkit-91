@@ -1,35 +1,39 @@
-import axios from 'axios';
+import { GameState, Player } from './types';
 
-export const fetchWithRetry = async (url: string, retries: number = 3, delay: number = 1000) => {
-    for (let i = 0; i <= retries; i++) {
-        try {
-            const response = await axios.get(url);
-            return response.data;
-        } catch (error) {
-            if (i < retries) {
-                console.warn(`Attempt ${i + 1} failed. Retrying in ${delay}ms...`);
-                await new Promise(res => setTimeout(res, delay));
-            } else {
-                console.error('All retry attempts failed:', error);
-                throw error;
-            }
-        }
-    }
-};
+class GameService {
+  private state: GameState;
 
-export const postWithRetry = async (url: string, data: any, retries: number = 3, delay: number = 1000) => {
-    for (let i = 0; i <= retries; i++) {
-        try {
-            const response = await axios.post(url, data);
-            return response.data;
-        } catch (error) {
-            if (i < retries) {
-                console.warn(`Attempt ${i + 1} failed. Retrying in ${delay}ms...`);
-                await new Promise(res => setTimeout(res, delay));
-            } else {
-                console.error('All retry attempts failed:', error);
-                throw error;
-            }
-        }
+  constructor(initialState: GameState) {
+    this.state = initialState;
+  }
+
+  public addPlayer(player: Player): void {
+    if (!this.state.players.some(p => p.id === player.id)) {
+      this.state.players.push(player);
     }
-};
+  }
+
+  public removePlayer(playerId: string): void {
+    this.state.players = this.state.players.filter(p => p.id !== playerId);
+  }
+
+  public startGame(): void {
+    if (!this.state.isRunning) {
+      this.state.isRunning = true;
+      this.state.startTime = new Date();
+    }
+  }
+
+  public endGame(): void {
+    if (this.state.isRunning) {
+      this.state.isRunning = false;
+      this.state.endTime = new Date();
+    }
+  }
+
+  public getCurrentState(): GameState {
+    return this.state;
+  }
+}
+
+export default GameService;
