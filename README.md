@@ -1,50 +1,43 @@
 # dev-toolkit-91
 
-A powerful suite of development tools designed to streamline your TypeScript projects. Whether you need to automate tasks, manage environments, or enhance your code quality, dev-toolkit-91 provides a comprehensive solution tailored for modern developers.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+dev-toolkit-91 is a TypeScript library that provides utilities for building efficient 2D games in the browser. It focuses on core systems like game loops and input to help developers prototype and ship games faster without unnecessary complexity.
 
 ## Features
-- **Task Automation**: Easily automate repetitive development tasks with customizable scripts, reducing your workload and minimizing errors.
-- **Environment Management**: Simplify the management of multiple project environments with intuitive commands to switch contexts seamlessly.
-- **Code Quality Enhancements**: Integrate linting and formatting tools to enforce coding standards and improve readability throughout your codebase.
-- **Flexible Plugin System**: Extend functionality with a robust plugin system, allowing you to tailor the toolkit to fit your specific needs.
+
+- Fixed timestep game loop with delta time calculations for consistent physics across devices
+- Entity-component system for composing game objects without deep inheritance
+- Asynchronous asset loader with batch operations and memory caching
+- Unified input manager supporting keyboard, mouse, and touch with polling support
 
 ## Installation
-To get started with dev-toolkit-91, follow these steps:
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Developer/dev-toolkit-91.git
-   ```
-2. Navigate into the project directory:
-   ```bash
-   cd dev-toolkit-91
-   ```
-3. Install the necessary dependencies:
-   ```bash
-   npm install
-   ```
-4. Build the project:
-   ```bash
-   npm run build
-   ```
-
-## Basic Usage
-Once installed, you can begin using dev-toolkit-91 with a basic command. Here’s how to run the task automation feature:
 
 ```bash
-npx dev-toolkit-91 run task-name
+npm install dev-toolkit-91
 ```
 
-Replace `task-name` with the specific task you want to automate, as defined in your configuration file. For example:
+## Usage
 
-```bash
-npx dev-toolkit-91 run build
+```typescript
+import { GameLoop, AssetLoader, InputManager } from 'dev-toolkit-91';
+
+const assets = new AssetLoader();
+await assets.load([
+  { id: 'player', url: '/assets/player.png' }
+]);
+
+const input = new InputManager();
+const loop = new GameLoop({
+  update: (dt) => {
+    if (input.isPressed('Space')) {
+      // trigger action
+    }
+  },
+  render: () => {
+    // draw to canvas
+  }
+});
+
+loop.start();
 ```
-
-## License
-![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)  
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details. 
-
----
-
-With dev-toolkit-91, elevate your TypeScript development experience and maximize your productivity. Check out the documentation for more advanced configurations and usage scenarios!
