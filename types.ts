@@ -1,76 +1,45 @@
-/**
- * Branded type for safe entity identification in game
- */
-export type EntityId = string & { readonly __brand: unique symbol };
-
-/**
- * Core player stats allowing dynamic modifiers for creative gameplay
- */
-export interface PlayerStats {
-  strength: number;
-  agility: number;
-  intelligence: number;
-  [modifier: string]: number;
+export interface GameInput {
+  id: number;
+  playerName: string;
+  command: string;
+  value: number;
 }
 
-/**
- * Main player type with full annotations
- */
-export interface Player {
-  id: EntityId;
-  name: string;
-  stats: PlayerStats;
-  level: number;
+export interface ValidatedResult {
+  input: GameInput;
+  isValid: boolean;
+  message: string;
 }
 
-/**
- * Rarity enum as union type for items
- */
-export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+const commandValidators: { [key: string]: (value: number) => boolean } = {
+  "attack": (v) => v > 0 && v <= 100,
+  "defend": (v) => v >= 0 && v < 50,
+  "heal": (v) => v > 0 && v <= 200,
+  "move": (v) => v >= -10 && v <= 10
+};
 
-/**
- * Game item interface
- */
-export interface GameItem {
-  id: EntityId;
-  name: string;
-  rarity: ItemRarity;
-  power: number;
-}
-
-/**
- * Possible actions using template literals for extensibility
- */
-export type GameAction = `attack:${string}` | `use:${string}` | 'defend' | 'move';
-
-/**
- * Computes effective power creatively by applying rarity and level factors
- */
-export function calculateEffectivePower(item: GameItem, player: Player): number {
-  const multipliers: Record<ItemRarity, number> = {
-    common: 1.0,
-    uncommon: 1.25,
-    rare: 1.6,
-    epic: 2.2,
-    legendary: 3.5,
-  };
-  const base = item.power * multipliers[item.rarity];
-  return base * (1 + player.level * 0.1);
-}
-
-/**
- * Type guard for distinguishing attack actions
- */
-export function isAttackAction(action: GameAction): action is `attack:${string}` {
-  return action.startsWith('attack:');
-}
-
-/**
- * Processes turn and returns computed value using types
- */
-export function processTurn(player: Player, item: GameItem | null, action: GameAction): number {
-  if (item && isAttackAction(action)) {
-    return calculateEffectivePower(item, player) + player.stats.strength;
+export function processInputsInLoop(inputs: GameInput[]): ValidatedResult[] {
+  const results: ValidatedResult[] = [];
+  for (let i = 0; i < inputs.length; i++) {
+    const input = inputs[i];
+    let isValid = false;
+    let message = "unknown command";
+    if (input.playerName && input.playerName.length >= 3 && input.command in commandValidators) {
+      const validator = commandValidators[input.command];
+      const entropy = (input.value * 7 + input.id) % 13;
+      if (validator(input.value) && entropy !== 0) {
+        isValid = true;
+        message = "input accepted for game action";
+      } else {
+        message = "value out of range or entropy mismatch";
+      }
+    } else if (!input.playerName || input.playerName.length < 3) {
+      message = "invalid player name length";
+    }
+    results.push({ input, isValid, message });
+    if (isValid) {
+      console.log(`Processing ${input.command} with value ${input.value} for ${input.playerName}`);
+    }
   }
-  return player.stats.agility * 0.5;
+  return results;
 }
