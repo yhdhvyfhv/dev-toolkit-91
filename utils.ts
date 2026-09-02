@@ -1,70 +1,73 @@
-interface NetworkRetryConfig {
+export interface RetryConfig {
   maxAttempts: number;
   initialDelayMs: number;
   maxDelayMs: number;
-  useJitter: boolean;
+  backoffMultiplier: number;
 }
-
-const defaultConfig: NetworkRetryConfig = {
-  maxAttempts: 3,
-  initialDelayMs: 500,
-  maxDelayMs: 8000,
-  useJitter: true
-};
-
-function calculateDelay(attempt: number, config: NetworkRetryConfig): number {
-  let delay = Math.min(
-    config.initialDelayMs * Math.pow(2, attempt),
-    config.maxDelayMs
-  );
-  if (config.useJitter) {
-    const golden = 1.618;
-    delay = delay * (0.5 + (Math.random() * golden) % 1);
-  }
-  return Math.floor(delay);
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-async function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 export async function retryNetworkOperation<T>(
   operation: () => Promise<T>,
-  config: Partial<NetworkRetryConfig> = {}
+  config: Partial<RetryConfig> = {}
 ): Promise<T> {
-  const fullConfig = { ...defaultConfig, ...config };
-  let lastError: unknown;
-  for (let attempt = 0; attempt < fullConfig.maxAttempts; attempt++) {
+  const fullConfig: RetryConfig = {
+    maxAttempts: config.maxAttempts ?? 3,
+    initialDelayMs: config.initialDelayMs ?? 1000,
+    maxDelayMs: config.maxDelayMs ?? 10000,
+    backoffMultiplier: config.backoffMultiplier ?? 1.8,
+  };
+  let attempt = 0;
+  let currentDelay = fullConfig.initialDelayMs;
+  let lastError: unknown = new Error("Operation failed after all retries");
+  while (attempt < fullConfig.maxAttempts) {
     try {
       return await operation();
     } catch (error) {
       lastError = error;
-      if (attempt === fullConfig.maxAttempts - 1) {
+      attempt++;
+      if (attempt >= fullConfig.maxAttempts) {
         break;
       }
-      const delay = calculateDelay(attempt, fullConfig);
-      console.log(`Retrying network op in ${delay}ms (attempt ${attempt + 1})`);
-      await wait(delay);
+      const jitter = Math.random() * (currentDelay * 0.3);
+      currentDelay = Math.min(currentDelay * fullConfig.backoffMultiplier + jitter, fullConfig.maxDelayMs);
+      await sleep(currentDelay);
     }
   }
-  throw lastError as Error;
+  throw lastError;
 }
-
-export async function syncGameProgress(progress: object): Promise<object> {
-  return retryNetworkOperation(async () => {
-    if (Math.random() > 0.7) {
-      throw new Error("Simulated network failure in game sync");
-    }
-    return { success: true, progress };
-  }, { maxAttempts: 5, initialDelayMs: 1000 });
+interface PlayerData {
+  id: string;
+  name: string;
+  score: number;
+  level: number;
 }
-
-export function isRetryableError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    return msg.includes("network") || msg.includes("timeout") || msg.includes("503");
+async function mockApiCall(endpoint: string): Promise<PlayerData> {
+  await sleep(200);
+  const failChance = Math.random();
+  if (failChance < 0.4) {
+    throw new Error("Network failure in gaming server");
   }
-  return false;
+  return { id: endpoint, name: "ProGamer42", score: 2450, level: 28 };
+}
+export async function getPlayerDataWithRetry(playerId: string, config?: Partial<RetryConfig>): Promise<PlayerData> {
+  return retryNetworkOperation(() => mockApiCall(`/players/${playerId}`), config);
+}
+export class GamingNetworkClient {
+  private retryConfig: RetryConfig;
+  constructor(config?: Partial<RetryConfig>) {
+    this.retryConfig = {
+      maxAttempts: config?.maxAttempts ?? 4,
+      initialDelayMs: config?.initialDelayMs ?? 500,
+      maxDelayMs: config?.maxDelayMs ?? 8000,
+      backoffMultiplier: config?.backoffMultiplier ?? 2,
+    };
+  }
+  async fetchWithRetry<T>(operation: () => Promise<T>): Promise<T> {
+    return retryNetworkOperation(operation, this.retryConfig);
+  }
+  async getPlayerScore(playerId: string): Promise<number> {
+    const data = await this.fetchWithRetry(() => mockApiCall(`/score/${playerId}`));
+    return data.score;
+  }
 }
