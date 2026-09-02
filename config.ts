@@ -1,33 +1,47 @@
-import * as winston from 'winston';
-import * as DailyRotateFile from 'winston-daily-rotate-file';
+export interface GameConfig {
+  title: string;
+  version: string;
+  maxPlayers: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  enableSound: boolean;
+  frameRate: number;
+}
 
-const logDirectory = 'logs';
+const DEFAULT_CONFIG: GameConfig = {
+  title: 'Mystic Realms',
+  version: '1.0.0',
+  maxPlayers: 4,
+  difficulty: 'medium',
+  enableSound: true,
+  frameRate: 60
+};
 
-const transport = new DailyRotateFile({
-  filename: `${logDirectory}/%DATE%.log`,
-  datePattern: 'YYYY-MM-DD',
-  prepend: true,
-  zippedArchive: true,
-  maxSize: '20m',
-  maxFiles: '14d',
-  level: 'info',
-});
+export function createConfigLoader<T>(defaults: T) {
+  return function loadConfig(overrides: Partial<T> = {}): T {
+    const merged = { ...defaults };
+    Object.keys(overrides).forEach(key => {
+      const typedKey = key as keyof T;
+      if (overrides[typedKey] !== undefined) {
+        (merged as any)[typedKey] = overrides[typedKey];
+      }
+    });
+    return Object.freeze(merged as T);
+  };
+}
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json(),
-  ),
-  transports: [
-    transport,
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple(),
-      ),
-    }),
-  ],
-});
+export const loadGameConfig = createConfigLoader(DEFAULT_CONFIG);
 
-export default logger;
+export function getConfigValue<K extends keyof GameConfig>(
+  config: GameConfig,
+  key: K
+): GameConfig[K] {
+  return config[key];
+}
+
+export function updateConfig(
+  current: GameConfig,
+  updates: Partial<GameConfig>
+): GameConfig {
+  const loader = createConfigLoader(current);
+  return loader(updates);
+}
