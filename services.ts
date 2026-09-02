@@ -1,73 +1,77 @@
-export interface Player {
-  id: string;
-  name: string;
-  score: number;
-}
+import * as fs from 'fs';
+import * as path from 'path';
 
-export interface GameSession {
-  id: string;
-  players: Player[];
-  status: 'waiting' | 'active' | 'ended';
-}
+export class RotatingLogger {
+  private logPath: string;
+  private maxSize: number;
+  private maxBackups: number;
 
-class PlayerManager {
-  private players: Map<string, Player> = new Map();
-
-  createPlayer(name: string): Player {
-    const id = `player_${Date.now()}`;
-    const player: Player = { id, name, score: 0 };
-    this.players.set(id, player);
-    return player;
+  constructor(logPath: string, maxSize: number = 1024 * 1024, maxBackups: number = 5) {
+    this.logPath = logPath;
+    this.maxSize = maxSize;
+    this.maxBackups = maxBackups;
   }
 
-  getPlayer(id: string): Player | undefined {
-    return this.players.get(id);
+  log(level: string, message: string): void {
+    const entry = this.formatEntry(level, message);
+    if (this.needsRotation()) {
+      this.rotateLogs();
+    }
+    fs.appendFileSync(this.logPath, entry);
   }
 
-  addScore(id: string, points: number): void {
-    const player = this.players.get(id);
-    if (player) {
-      player.score += points;
+  private formatEntry(level: string, message: string): string {
+    const ts = new Date().toISOString();
+    return "[" + ts + "] " + level.toUpperCase() + ": " + message + "\n";
+  }
+
+  private needsRotation(): boolean {
+    try {
+      if (!fs.existsSync(this.logPath)) {
+        return false;
+      }
+      const size = fs.statSync(this.logPath).size;
+      return size >= this.maxSize;
+    } catch (err) {
+      return false;
     }
   }
-}
 
-class SessionManager {
-  private sessions: Map<string, GameSession> = new Map();
-  private playerManager: PlayerManager;
+  private rotateLogs(): void {
+    const dirName = path.dirname(this.logPath);
+    const baseName = path.basename(this.logPath);
+    const nameWithoutExt = path.basename(baseName, path.extname(baseName));
+    const extension = path.extname(baseName);
 
-  constructor(playerManager: PlayerManager) {
-    this.playerManager = playerManager;
-  }
-
-  createSession(playerNames: string[]): GameSession {
-    const id = `session_${Date.now()}`;
-    const players = playerNames.map(name => this.playerManager.createPlayer(name));
-    const session: GameSession = { id, players, status: 'waiting' };
-    this.sessions.set(id, session);
-    return session;
-  }
-
-  startSession(id: string): GameSession | undefined {
-    const session = this.sessions.get(id);
-    if (session) {
-      session.status = 'active';
+    for (let i = this.maxBackups; i > 1; i--) {
+      const src = path.join(dirName, nameWithoutExt + "." + (i - 1) + extension);
+      const dest = path.join(dirName, nameWithoutExt + "." + i + extension);
+      if (fs.existsSync(src)) {
+        if (fs.existsSync(dest)) {
+          fs.unlinkSync(dest);
+        }
+        fs.renameSync(src, dest);
+      }
     }
-    return session;
+
+    const firstBackup = path.join(dirName, nameWithoutExt + ".1" + extension);
+    if (fs.existsSync(this.logPath)) {
+      if (fs.existsSync(firstBackup)) {
+        fs.unlinkSync(firstBackup);
+      }
+      fs.renameSync(this.logPath, firstBackup);
+    }
   }
 
-  endSession(id: string): GameSession | undefined {
-    const session = this.sessions.get(id);
-    if (session) {
-      session.status = 'ended';
-      const total = session.players.reduce((sum, p) => sum + p.score, 0);
-      session.players.forEach(p => {
-        p.score = Math.floor(total / session.players.length);
-      });
-    }
-    return session;
+  info(msg: string): void { this.log('info', msg); }
+  warn(msg: string): void { this.log('warn', msg); }
+  error(msg: string): void { this.log('error', msg); }
+
+  gameEvent(event: string, details: string): void {
+    this.log('game', event + " - " + details);
   }
 }
 
-export const playerManager = new PlayerManager();
-export const sessionManager = new SessionManager(playerManager);
+export const setupLogger = (logPath: string = 'dev-toolkit-91.log'): RotatingLogger => {
+  return new RotatingLogger(logPath, 1024 * 50, 3);
+};
