@@ -1,34 +1,52 @@
-export const clamp = (val: number, min: number, max: number): number => Math.min(Math.max(val, min), max);
+export class SpatialEntityArena {
+  private readonly data: Float32Array;
+  private readonly stride = 5;
+  private count = 0;
 
-export const lerp = (start: number, end: number, alpha: number): number => start * (1 - alpha) + end * alpha;
-
-export const spawnChance = (probability: number): boolean => Math.random() < probability;
-
-export const uuid = (): string => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-  const r = (Math.random() * 16) | 0;
-  const v = c === 'x' ? r : (r & 0x3) | 0x8;
-  return v.toString(16);
-});
-
-export const throttle = <T extends (...args: any[]) => void>(func: T, limit: number) => {
-  let inThrottle = false;
-  return (...args: Parameters<T>) => {
-    if (!inThrottle) {
-      func(...args);
-      inThrottle = true;
-      setTimeout(() => (inThrottle = false), limit);
-    }
-  };
-};
-
-export const shuffle = <T>(array: T[]): T[] => {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+  constructor(private readonly maxEntities: number = 10000) {
+    this.data = new Float32Array(maxEntities * this.stride);
   }
-  return arr;
-};
 
-export const range = (start: number, end: number): number[] => 
-  Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  public spawn(x: number, y: number, vx: number, vy: number): number {
+    if (this.count >= this.maxEntities) return -1;
+    const ptr = this.count * this.stride;
+    this.data[ptr] = x;
+    this.data[ptr + 1] = y;
+    this.data[ptr + 2] = vx;
+    this.data[ptr + 3] = vy;
+    this.data[ptr + 4] = 1.0;
+    return this.count++;
+  }
+
+  public updateBatch(delta: number): void {
+    const total = this.count * this.stride;
+    for (let i = 0; i < total; i += this.stride) {
+      if (this.data[i + 4] === 1.0) {
+        this.data[i] += this.data[i + 2] * delta;
+        this.data[i + 1] += this.data[i + 3] * delta;
+      }
+    }
+  }
+
+  public queryRegion(minX: number, minY: number, maxX: number, maxY: number): Uint32Array {
+    const matches = new Uint32Array(this.count);
+    let matchCount = 0;
+    const total = this.count * this.stride;
+
+    for (let i = 0, id = 0; i < total; i += this.stride, id++) {
+      if (this.data[i + 4] === 1.0) {
+        const x = this.data[i];
+        const y = this.data[i + 1];
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+          matches[matchCount++] = id;
+        }
+      }
+    }
+    return matches.subarray(0, matchCount);
+  }
+
+  public clear(): void {
+    this.data.fill(0);
+    this.count = 0;
+  }
+}
