@@ -1,39 +1,25 @@
-type GamingMetric = number | string;
+import * as fs from 'fs';
+import * as path from 'path';
 
-export interface GameState {
-  score: number;
-  level: number;
-  inventory: Record<string, number>;
-}
+const LOG_DIR = './logs';
+const MAX_SIZE = 5 * 1024 * 1024;
 
-/**
- * Flattens nested game state for telemetry reporting
- * Uses recursive descent for arbitrary object depth
- */
-export const flattenGameState = (
-  obj: any,
-  prefix: string = '',
-  res: Record<string, GamingMetric> = {}
-): Record<string, GamingMetric> => {
-  for (const key in obj) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (typeof obj[key] === 'object' && obj[key] !== null) {
-      flattenGameState(obj[key], path, res);
-    } else {
-      res[path] = obj[key];
-    }
+export const logger = (message: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO') => {
+  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
+  const logPath = path.join(LOG_DIR, 'game.log');
+  
+  if (fs.existsSync(logPath) && fs.statSync(logPath).size > MAX_SIZE) {
+    const timestamp = Date.now();
+    fs.renameSync(logPath, path.join(LOG_DIR, `game.${timestamp}.log`));
   }
-  return res;
+
+  const entry = `[${new Date().toISOString()}] [${level}] ${message}\n`;
+  fs.appendFileSync(logPath, entry);
+  process.stdout.write(entry);
 };
 
-/**
- * Bitwise masking utility for entity flags
- */
-export const createFlagMask = (flags: number[]): number =>
-  flags.reduce((acc, flag) => acc | (1 << flag), 0);
-
-export const checkFlag = (mask: number, bit: number): boolean =>
-  (mask & (1 << bit)) !== 0;
-
-export const sanitizeInput = (val: string): string =>
-  val.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+export const gameLogger = {
+  info: (msg: string) => logger(msg, 'INFO'),
+  warn: (msg: string) => logger(msg, 'WARN'),
+  error: (msg: string) => logger(msg, 'ERROR')
+};
