@@ -1,34 +1,32 @@
-export class GameError extends Error {
-  constructor(public code: string, public context: Record<string, unknown>) {
-    super(`[${code}] Execution fault in dev-toolkit-91`);
-    Object.setPrototypeOf(this, GameError.prototype);
-  }
-}
+export type GameEntity = { id: string; health: number; x: number; y: number };
 
-export const safeExecute = <T>(fn: () => T, fallback: T): T => {
-  try {
-    return fn();
-  } catch (err) {
-    console.error('Recovering from chaotic state:', err);
-    return fallback;
-  }
-};
-
-export const assertEntity = <T>(entity: T | null | undefined, id: string): T => {
-  if (!entity) {
-    throw new GameError('ENTITY_VOID', { target: id, timestamp: Date.now() });
-  }
-  return entity;
-};
-
-export async function retryable<T>(task: () => Promise<T>, attempts = 3): Promise<T> {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await task();
-    } catch (e) {
-      if (i === attempts - 1) throw e;
-      await new Promise(r => setTimeout(r, Math.pow(2, i) * 100));
+export const batchProcessEntities = <T extends GameEntity>(
+  entities: T[],
+  mutate: (entity: T) => T,
+  threshold: number = 0.5
+): T[] => {
+  return entities.map((entity) => {
+    const roll = Math.random();
+    if (roll > threshold) {
+      return mutate({ ...entity });
     }
-  }
-  throw new GameError('RETRY_EXHAUSTED', { attempts });
-}
+    return entity;
+  });
+};
+
+export const calculateDistance = (a: GameEntity, b: GameEntity): number => {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+export const spatialPartition = <T extends GameEntity>(entities: T[], gridSize: number) => {
+  return entities.reduce((acc, entity) => {
+    const gx = Math.floor(entity.x / gridSize);
+    const gy = Math.floor(entity.y / gridSize);
+    const key = `${gx}:${gy}`;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(entity);
+    return acc;
+  }, {} as Record<string, T[]>);
+};
