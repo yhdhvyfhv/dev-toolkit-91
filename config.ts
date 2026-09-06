@@ -1,47 +1,54 @@
+export type GameProfile = 'retro' | 'esports' | 'cinematic';
+
 export interface GameConfig {
-  title: string;
-  version: string;
-  maxPlayers: number;
-  difficulty: 'easy' | 'medium' | 'hard';
-  enableSound: boolean;
-  frameRate: number;
+  fpsLimit: number;
+  fov: number;
+  enableVsync: boolean;
+  audioVolume: number;
+  difficultyMultiplier: number;
+  cheatsEnabled: boolean;
 }
 
-const DEFAULT_CONFIG: GameConfig = {
-  title: 'Mystic Realms',
-  version: '1.0.0',
-  maxPlayers: 4,
-  difficulty: 'medium',
-  enableSound: true,
-  frameRate: 60
+const PROFILE_DEFAULTS: Record<GameProfile, GameConfig> = {
+  retro: { fpsLimit: 30, fov: 70, enableVsync: false, audioVolume: 0.5, difficultyMultiplier: 1.5, cheatsEnabled: true },
+  esports: { fpsLimit: 360, fov: 103, enableVsync: false, audioVolume: 0.8, difficultyMultiplier: 1.0, cheatsEnabled: false },
+  cinematic: { fpsLimit: 60, fov: 90, enableVsync: true, audioVolume: 1.0, difficultyMultiplier: 1.0, cheatsEnabled: false }
 };
 
-export function createConfigLoader<T>(defaults: T) {
-  return function loadConfig(overrides: Partial<T> = {}): T {
-    const merged = { ...defaults };
-    Object.keys(overrides).forEach(key => {
-      const typedKey = key as keyof T;
-      if (overrides[typedKey] !== undefined) {
-        (merged as any)[typedKey] = overrides[typedKey];
+export class GameConfigLoader {
+  private activeConfig: GameConfig;
+
+  constructor(profile: GameProfile = 'cinematic', overrides: Partial<GameConfig> = {}) {
+    const base = PROFILE_DEFAULTS[profile] || PROFILE_DEFAULTS.cinematic;
+    
+    this.activeConfig = new Proxy({ ...base, ...overrides } as GameConfig, {
+      get(target, prop: keyof GameConfig) {
+        if (!(prop in target)) {
+          if (prop === 'fpsLimit') return 60;
+          if (prop === 'cheatsEnabled') return false;
+          return undefined;
+        }
+        return target[prop];
+      },
+      set(target, prop: keyof GameConfig, value) {
+        if (prop === 'fpsLimit' && typeof value === 'number' && value < 10) {
+          throw new Error('FPS limit lower than 10 is unplayable!');
+        }
+        target[prop] = value as never;
+        return true;
       }
     });
-    return Object.freeze(merged as T);
-  };
-}
+  }
 
-export const loadGameConfig = createConfigLoader(DEFAULT_CONFIG);
+  public get<K extends keyof GameConfig>(key: K): GameConfig[K] {
+    return this.activeConfig[key];
+  }
 
-export function getConfigValue<K extends keyof GameConfig>(
-  config: GameConfig,
-  key: K
-): GameConfig[K] {
-  return config[key];
-}
+  public update(newSettings: Partial<GameConfig>): void {
+    Object.assign(this.activeConfig, newSettings);
+  }
 
-export function updateConfig(
-  current: GameConfig,
-  updates: Partial<GameConfig>
-): GameConfig {
-  const loader = createConfigLoader(current);
-  return loader(updates);
+  public export(): GameConfig {
+    return { ...this.activeConfig };
+  }
 }
