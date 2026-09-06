@@ -1,32 +1,32 @@
-export type GameEntity = { id: string; health: number; x: number; y: number };
+export type GameEntity = { id: string; state: 'active' | 'cooldown' | 'archived'; tick: number };
 
-export const batchProcessEntities = <T extends GameEntity>(
-  entities: T[],
-  mutate: (entity: T) => T,
-  threshold: number = 0.5
-): T[] => {
-  return entities.map((entity) => {
-    const roll = Math.random();
-    if (roll > threshold) {
-      return mutate({ ...entity });
+export const sanitizeEntity = (entity: Partial<GameEntity>): GameEntity => ({
+  id: entity.id ?? Math.random().toString(36).slice(2),
+  state: entity.state ?? 'active',
+  tick: entity.tick ?? 0
+});
+
+export const batchUpdate = <T>(items: T[], mutator: (item: T) => T): T[] => 
+  items.map(mutator);
+
+export const entityFilter = {
+  active: (list: GameEntity[]) => list.filter(e => e.state === 'active'),
+  expired: (list: GameEntity[]) => list.filter(e => e.tick > 1000)
+};
+
+export const processRegistry = (registry: Map<string, GameEntity>) => {
+  const results: GameEntity[] = [];
+  for (const [key, entity] of registry.entries()) {
+    if (entity.state === 'archived') {
+      registry.delete(key);
+      continue;
     }
-    return entity;
-  });
+    results.push({ ...entity, tick: entity.tick + 1 });
+  }
+  return results;
 };
 
-export const calculateDistance = (a: GameEntity, b: GameEntity): number => {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
-};
-
-export const spatialPartition = <T extends GameEntity>(entities: T[], gridSize: number) => {
-  return entities.reduce((acc, entity) => {
-    const gx = Math.floor(entity.x / gridSize);
-    const gy = Math.floor(entity.y / gridSize);
-    const key = `${gx}:${gy}`;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(entity);
-    return acc;
-  }, {} as Record<string, T[]>);
-};
+export const createLogger = (prefix: string) => ({
+  log: (msg: string) => console.log(`[${prefix.toUpperCase()}]: ${msg}`),
+  warn: (msg: string) => console.warn(`[${prefix.toUpperCase()}]: WARNING - ${msg}`)
+});
