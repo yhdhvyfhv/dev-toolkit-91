@@ -1,35 +1,40 @@
-export interface GameInput { playerId: string; action: string; timestamp: number; payload: Record<string, any> }
+const memoCache = new Map<string, unknown>();
 
-const SCHEMA_MAP: Record<string, (p: any) => boolean> = {
-  move: (p) => typeof p.x === 'number' && typeof p.y === 'number',
-  interact: (p) => typeof p.targetId === 'string',
-  chat: (p) => typeof p.message === 'string' && p.message.length < 256
-};
-
-export class InputProcessor {
-  private static readonly validator = (input: GameInput): boolean => {
-    if (!input.playerId || !input.action) return false;
-    return (SCHEMA_MAP[input.action] || (() => true))(input.payload);
-  };
-
-  public static processLoop(queue: GameInput[]): void {
-    const results = queue.filter(this.validator);
-    
-    for (const input of results) {
-      try {
-        this.executeAction(input);
-      } catch (err) {
-        console.error(`Execution fail for ${input.playerId}: ${err}`);
-      }
-    }
-  }
-
-  private static executeAction(input: GameInput): void {
-    console.log(`Processing ${input.action} for ${input.playerId}`);
-  }
+interface GameMetrics {
+  id: string;
+  renderTime: number;
+  delta: number;
 }
 
-export const validateInput = (input: unknown): input is GameInput => {
-  const i = input as GameInput;
-  return !!(i && i.playerId && i.action && typeof i.timestamp === 'number');
+export const computeFrameBudget = (metrics: GameMetrics[]): number => {
+  const cacheKey = JSON.stringify(metrics);
+  if (memoCache.has(cacheKey)) return memoCache.get(cacheKey) as number;
+
+  const smoothed = metrics.reduce((acc, curr) => acc + curr.renderTime * curr.delta, 0) / metrics.length;
+  const result = Math.max(16.6, smoothed * 1.05);
+
+  if (memoCache.size > 100) memoCache.clear();
+  memoCache.set(cacheKey, result);
+  return result;
 };
+
+export class PerformanceOptimizer {
+  private static instance: PerformanceOptimizer;
+  private workers: Worker[] = [];
+
+  public static getInstance(): PerformanceOptimizer {
+    if (!this.instance) this.instance = new PerformanceOptimizer();
+    return this.instance;
+  }
+
+  public offloadPhysics(payload: Float32Array): Promise<Float32Array> {
+    return new Promise((resolve) => {
+      const worker = new Worker('physics.worker.js');
+      worker.onmessage = (e) => {
+        resolve(e.data);
+        worker.terminate();
+      };
+      worker.postMessage(payload, [payload.buffer]);
+    });
+  }
+}
