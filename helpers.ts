@@ -1,65 +1,40 @@
-export interface FrameState {
-  fps: number;
-  deltaTime: number;
-  playerCoords: [number, number, number];
-  health: number;
+export class GameError extends Error {
+  constructor(public code: string, public context: Record<string, unknown>) {
+    super(`[${code}] Gaming edge case encountered.`);
+  }
 }
 
-export type SanitizeOptions = {
-  maxDeltaTimeMs?: number;
-  worldBounds?: [number, number];
-  defaultHealth?: number;
+export const safeExecute = <T>(fn: () => T, fallback: T): T => {
+  try {
+    return fn();
+  } catch (err) {
+    console.error('Recovering from unexpected state:', err);
+    return fallback;
+  }
 };
 
-export class TelemetryAnomalyError extends Error {
-  constructor(public readonly metric: string, public readonly value: unknown) {
-    super(`[dev-toolkit-91] Telemetry anomaly detected in field "${metric}": ${String(value)}`);
-    this.name = 'TelemetryAnomalyError';
+export const validateEntityState = (entity: any): boolean => {
+  const isCorrupted = !entity || typeof entity !== 'object' || Array.isArray(entity);
+  if (isCorrupted) {
+    throw new GameError('ENTITY_CORRUPTION', { entity });
   }
-}
+  return true;
+};
 
-/**
- * Creative resilience wrapper for game loop ticks.
- * Intercepts NaN, unexpected teleports, and deadlocks before rendering.
- */
-export function guardFrameExecution(
-  rawState: Partial<FrameState>,
-  fallback: FrameState,
-  options: SanitizeOptions = {}
-): FrameState {
-  const { maxDeltaTimeMs = 1000 / 15, worldBounds = [-10000, 10000], defaultHealth = 100 } = options;
-
-  try {
-    if (!rawState || typeof rawState !== 'object') {
-      throw new TelemetryAnomalyError('rawState', rawState);
-    }
-
-    const deltaTime = Number.isNaN(rawState.deltaTime) || (rawState.deltaTime ?? -1) < 0
-      ? fallback.deltaTime
-      : Math.min(rawState.deltaTime!, maxDeltaTimeMs);
-
-    const health = Number.isFinite(rawState.health)
-      ? Math.max(0, Math.min(100, rawState.health!))
-      : defaultHealth;
-
-    const coords = rawState.playerCoords ?? fallback.playerCoords;
-    const sanitizedCoords: [number, number, number] = coords.map((c, idx) => {
-      if (!Number.isFinite(c)) return fallback.playerCoords[idx];
-      return Math.min(Math.max(c, worldBounds[0]), worldBounds[1]);
-    }) as [number, number, number];
-
-    const fps = Math.round(1000 / Math.max(deltaTime, 0.001));
-
-    return {
-      fps,
-      deltaTime,
-      playerCoords: sanitizedCoords,
-      health,
-    };
-  } catch (error) {
-    if (error instanceof TelemetryAnomalyError) {
-      console.warn(`[GlitchShield] Corrected invalid frame telemetry:`, error.message);
-    }
-    return { ...fallback };
+export const chainFallbacks = <T>(...fns: Array<() => T | null>): T | null => {
+  for (const fn of fns) {
+    const result = safeExecute(fn, null);
+    if (result !== null) return result;
   }
-}
+  return null;
+};
+
+export const withCooldown = <T extends (...args: any[]) => any>(fn: T, ms: number) => {
+  let lastRun = 0;
+  return (...args: Parameters<T>): ReturnType<T> | null => {
+    const now = Date.now();
+    if (now - lastRun < ms) return null;
+    lastRun = now;
+    return fn(...args);
+  };
+};
