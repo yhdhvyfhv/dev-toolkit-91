@@ -1,25 +1,72 @@
-import * as fs from 'fs';
-import * as path from 'path';
+export interface Entity2D {
+  id: number;
+  x: number;
+  y: number;
+}
 
-const LOG_DIR = './logs';
-const MAX_SIZE = 5 * 1024 * 1024;
+export class SpatialGridOptimizer {
+  private cellSize: number;
+  private grid: Map<number, number[]>;
+  private pool: number[][];
 
-export const logger = (message: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO') => {
-  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
-  const logPath = path.join(LOG_DIR, 'game.log');
-  
-  if (fs.existsSync(logPath) && fs.statSync(logPath).size > MAX_SIZE) {
-    const timestamp = Date.now();
-    fs.renameSync(logPath, path.join(LOG_DIR, `game.${timestamp}.log`));
+  constructor(cellSize: number = 64) {
+    this.cellSize = cellSize;
+    this.grid = new Map();
+    this.pool = Array.from({ length: 256 }, () => []);
   }
 
-  const entry = `[${new Date().toISOString()}] [${level}] ${message}\n`;
-  fs.appendFileSync(logPath, entry);
-  process.stdout.write(entry);
-};
+  private getHash(x: number, y: number): number {
+    const cx = (Math.floor(x / this.cellSize) + 32768) & 0xffff;
+    const cy = (Math.floor(y / this.cellSize) + 32768) & 0xffff;
+    return (cx << 16) | cy;
+  }
 
-export const gameLogger = {
-  info: (msg: string) => logger(msg, 'INFO'),
-  warn: (msg: string) => logger(msg, 'WARN'),
-  error: (msg: string) => logger(msg, 'ERROR')
-};
+  private acquireArray(): number[] {
+    return this.pool.pop() || [];
+  }
+
+  private releaseArray(arr: number[]): void {
+    arr.length = 0;
+    if (this.pool.length < 512) {
+      this.pool.push(arr);
+    }
+  }
+
+  public clear(): void {
+    for (const list of this.grid.values()) {
+      this.releaseArray(list);
+    }
+    this.grid.clear();
+  }
+
+  public insert(entity: Entity2D): void {
+    const hash = this.getHash(entity.x, entity.y);
+    let list = this.grid.get(hash);
+    if (!list) {
+      list = this.acquireArray();
+      this.grid.set(hash, list);
+    }
+    list.push(entity.id);
+  }
+
+  public retrieve(x: number, y: number, range: number): number[] {
+    const results: number[] = [];
+    const startX = x - range;
+    const endX = x + range;
+    const startY = y - range;
+    const endY = y + range;
+
+    for (let gx = startX; gx <= endX + this.cellSize; gx += this.cellSize) {
+      for (let gy = startY; gy <= endY + this.cellSize; gy += this.cellSize) {
+        const hash = this.getHash(gx, gy);
+        const bucket = this.grid.get(hash);
+        if (bucket) {
+          for (let i = 0; i < bucket.length; i++) {
+            results.push(bucket[i]);
+          }
+        }
+      }
+    }
+    return results;
+  }
+}
