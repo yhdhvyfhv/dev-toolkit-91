@@ -1,30 +1,53 @@
-import * as fs from 'fs';
-import * as path from 'path';
-
-interface LoggerConfig {
-  logDir: string;
-  maxSize: number;
+export interface LootItem<T> {
+  id: string;
+  value: T;
+  weight: number;
 }
 
-export const createLogger = (config: LoggerConfig) => {
-  if (!fs.existsSync(config.logDir)) fs.mkdirSync(config.logDir);
+export interface RollHistory {
+  misses: Record<string, number>;
+}
+
+/**
+ * Rolls loot with an unusual "entropy-backed pity system".
+ * Every failed roll on an item increases its effective weight quadratically.
+ */
+export function rollWithPity<T>(
+  lootTable: LootItem<T>[],
+  history: RollHistory,
+  pityFactor: number = 0.15
+): { item: LootItem<T>; updatedHistory: RollHistory } {
+  const adjustedWeights = lootTable.map(item => {
+    const missCount = history.misses[item.id] || 0;
+    const dynamicWeight = item.weight * (1 + Math.pow(missCount * pityFactor, 2));
+    return { item, dynamicWeight };
+  });
+
+  const totalWeight = adjustedWeights.reduce((sum, curr) => sum + curr.dynamicWeight, 0);
+  let roll = Math.random() * totalWeight;
+  let selected: LootItem<T> | null = null;
+
+  for (const entry of adjustedWeights) {
+    roll -= entry.dynamicWeight;
+    if (roll <= 0) {
+      selected = entry.item;
+      break;
+    }
+  }
+
+  const selectedItem = selected || lootTable[lootTable.length - 1];
+  const nextMisses: Record<string, number> = {};
+
+  for (const item of lootTable) {
+    if (item.id === selectedItem.id) {
+      nextMisses[item.id] = 0;
+    } else {
+      nextMisses[item.id] = (history.misses[item.id] || 0) + 1;
+    }
+  }
 
   return {
-    log: (message: string) => {
-      const logPath = path.join(config.logDir, 'gameplay.log');
-      const entry = `[${new Date().toISOString()}] ${message}\n`;
-
-      if (fs.existsSync(logPath) && fs.statSync(logPath).size > config.maxSize) {
-        const backupPath = logPath.replace('.log', `.${Date.now()}.old`);
-        fs.renameSync(logPath, backupPath);
-      }
-
-      fs.appendFileSync(logPath, entry);
-    }
+    item: selectedItem,
+    updatedHistory: { misses: nextMisses }
   };
-};
-
-export const logger = createLogger({
-  logDir: path.join(__dirname, '..', 'logs'),
-  maxSize: 1024 * 512
-});
+}
