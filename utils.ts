@@ -1,72 +1,30 @@
-export interface Entity2D {
-  id: number;
-  x: number;
-  y: number;
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface LoggerConfig {
+  logDir: string;
+  maxSize: number;
 }
 
-export class SpatialGridOptimizer {
-  private cellSize: number;
-  private grid: Map<number, number[]>;
-  private pool: number[][];
+export const createLogger = (config: LoggerConfig) => {
+  if (!fs.existsSync(config.logDir)) fs.mkdirSync(config.logDir);
 
-  constructor(cellSize: number = 64) {
-    this.cellSize = cellSize;
-    this.grid = new Map();
-    this.pool = Array.from({ length: 256 }, () => []);
-  }
+  return {
+    log: (message: string) => {
+      const logPath = path.join(config.logDir, 'gameplay.log');
+      const entry = `[${new Date().toISOString()}] ${message}\n`;
 
-  private getHash(x: number, y: number): number {
-    const cx = (Math.floor(x / this.cellSize) + 32768) & 0xffff;
-    const cy = (Math.floor(y / this.cellSize) + 32768) & 0xffff;
-    return (cx << 16) | cy;
-  }
-
-  private acquireArray(): number[] {
-    return this.pool.pop() || [];
-  }
-
-  private releaseArray(arr: number[]): void {
-    arr.length = 0;
-    if (this.pool.length < 512) {
-      this.pool.push(arr);
-    }
-  }
-
-  public clear(): void {
-    for (const list of this.grid.values()) {
-      this.releaseArray(list);
-    }
-    this.grid.clear();
-  }
-
-  public insert(entity: Entity2D): void {
-    const hash = this.getHash(entity.x, entity.y);
-    let list = this.grid.get(hash);
-    if (!list) {
-      list = this.acquireArray();
-      this.grid.set(hash, list);
-    }
-    list.push(entity.id);
-  }
-
-  public retrieve(x: number, y: number, range: number): number[] {
-    const results: number[] = [];
-    const startX = x - range;
-    const endX = x + range;
-    const startY = y - range;
-    const endY = y + range;
-
-    for (let gx = startX; gx <= endX + this.cellSize; gx += this.cellSize) {
-      for (let gy = startY; gy <= endY + this.cellSize; gy += this.cellSize) {
-        const hash = this.getHash(gx, gy);
-        const bucket = this.grid.get(hash);
-        if (bucket) {
-          for (let i = 0; i < bucket.length; i++) {
-            results.push(bucket[i]);
-          }
-        }
+      if (fs.existsSync(logPath) && fs.statSync(logPath).size > config.maxSize) {
+        const backupPath = logPath.replace('.log', `.${Date.now()}.old`);
+        fs.renameSync(logPath, backupPath);
       }
+
+      fs.appendFileSync(logPath, entry);
     }
-    return results;
-  }
-}
+  };
+};
+
+export const logger = createLogger({
+  logDir: path.join(__dirname, '..', 'logs'),
+  maxSize: 1024 * 512
+});
