@@ -1,37 +1,34 @@
-export const memoizeCompute = <T extends (...args: any[]) => any>(fn: T, cacheLimit: number = 100) => {
-  const cache = new Map<string, ReturnType<T>>();
-  const keys: string[] = [];
+export type GameEntity = { id: string; health: number; active: boolean };
 
-  return (...args: Parameters<T>): ReturnType<T> => {
-    const key = JSON.stringify(args);
-    if (cache.has(key)) return cache.get(key)!;
+export const clamp = (val: number, min: number, max: number): number => 
+  Math.min(Math.max(val, min), max);
 
-    const result = fn(...args);
-    if (keys.length >= cacheLimit) {
-      const oldest = keys.shift();
-      if (oldest) cache.delete(oldest);
+export const generateEntityId = (prefix: string): string => 
+  `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+
+export const batchUpdate = <T>(items: T[], predicate: (i: T) => boolean, update: Partial<T>): T[] =>
+  items.map(item => predicate(item) ? { ...item, ...update } : item);
+
+export const rollD20 = (): number => Math.floor(Math.random() * 20) + 1;
+
+export const processTicks = <T>(queue: T[], effect: (item: T) => void): void => {
+  const snapshot = [...queue];
+  snapshot.forEach(effect);
+};
+
+export const lerp = (start: number, end: number, alpha: number): number =>
+  start * (1 - alpha) + end * alpha;
+
+export const isCriticalHit = (threshold: number): boolean => 
+  rollD20() >= threshold;
+
+export const throttleExecution = (fn: Function, ms: number) => {
+  let last = 0;
+  return (...args: any[]) => {
+    const now = Date.now();
+    if (now - last > ms) {
+      last = now;
+      fn(...args);
     }
-
-    cache.set(key, result);
-    keys.push(key);
-    return result;
   };
-};
-
-export const batchProcess = <T>(items: T[], chunkSize: number, processor: (batch: T[]) => void) => {
-  const execute = (index: number) => {
-    if (index >= items.length) return;
-    processor(items.slice(index, index + chunkSize));
-    setTimeout(() => execute(index + chunkSize), 0);
-  };
-  execute(0);
-};
-
-export const fastHash = (str: string): number => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
 };
