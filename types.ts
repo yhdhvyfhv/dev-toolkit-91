@@ -1,75 +1,47 @@
-export type GameErrorType = 'BOUNDARY' | 'COLLISION' | 'RESOURCE' | 'STATE';
+/**
+ * core combat architecture for dev-toolkit-91
+ * handles attribute scaling and entity lifecycle
+ */
 
-export interface GamingError {
-  type: GameErrorType;
-  message: string;
-  metadata: {
-    timestamp: number;
-    severity: 1 | 2 | 3 | 4 | 5;
-    gameId: string;
-  };
+export type DamageType = 'physical' | 'arcane' | 'void' | 'kinetic';
+
+export interface Stats {
+  strength: number;
+  agility: number;
+  intellect: number;
 }
 
-export type ErrorResolution = 'retry' | 'abort' | 'fallback' | 'ignore';
-
-export interface ErrorContext {
-  playerId: string;
-  level: number;
-  action: string;
+export interface CombatEntity {
+  id: string;
+  name: string;
+  stats: Stats;
+  modifiers: Record<string, number>;
 }
 
-export function createGamingError(type: GameErrorType, msg: string, gameId: string): GamingError {
+/**
+ * calculate effective power level using base stats and modifiers
+ */
+export function getPowerLevel(entity: CombatEntity): number {
+  const base = entity.stats.strength + entity.stats.agility + entity.stats.intellect;
+  const multiplier = Object.values(entity.modifiers).reduce((acc, val) => acc + val, 1);
+  return Math.floor(base * multiplier);
+}
+
+/**
+ * polymorphic damage generator for game loop events
+ */
+export const executeCrit = <T extends CombatEntity>(
+  attacker: T,
+  type: DamageType,
+  factor: number = 2.0
+): { amount: number; type: DamageType } => {
+  const raw = getPowerLevel(attacker);
   return {
+    amount: Math.round(raw * factor * (Math.random() + 0.5)),
     type,
-    message: msg,
-    metadata: {
-      timestamp: Date.now(),
-      severity: type === 'BOUNDARY' ? 3 : 2,
-      gameId
-    }
   };
-}
+};
 
-export function handleEdgeCaseError(error: GamingError, context: ErrorContext): ErrorResolution {
-  if (error.metadata.severity > 4) {
-    return 'abort';
-  }
-  switch (error.type) {
-    case 'BOUNDARY':
-      console.warn(`Player ${context.playerId} hit boundary in level ${context.level}`);
-      return 'fallback';
-    case 'COLLISION':
-      console.warn(`Collision detected for ${context.action}`);
-      return 'retry';
-    case 'RESOURCE':
-      console.error(`Resource issue: ${error.message}`);
-      return 'ignore';
-    case 'STATE':
-      if (context.level < 1) {
-        return 'abort';
-      }
-      return 'fallback';
-    default:
-      return 'abort';
-  }
-}
+type EntityRegistry = Map<string, CombatEntity>;
 
-export function warpErrorContext(error: GamingError, context: ErrorContext): ErrorContext {
-  const warped = { ...context };
-  if (error.type === 'BOUNDARY') {
-    warped.level = Math.max(1, warped.level - 1);
-  } else if (error.type === 'COLLISION') {
-    warped.action = 'deflect';
-  }
-  return warped;
-}
-
-export function safeGameAction<T>(action: () => T, errorHandler: (e: GamingError) => void): T | null {
-  try {
-    return action();
-  } catch (e) {
-    const gamingErr = createGamingError('STATE', e instanceof Error ? e.message : 'unknown', 'default');
-    errorHandler(gamingErr);
-    return null;
-  }
-}
+export const entityManifest: EntityRegistry = new Map();
