@@ -1,52 +1,32 @@
-export class SpatialGrid {
-  private grid: Int32Array;
-  private counts: Int32Array;
-  private cellSize: number;
-  private cols: number;
-  private maxPerCell: number;
+export type GameInput = { id: string; action: string; intensity: number };
 
-  constructor(width: number, height: number, cellSize: number, maxPerCell: number) {
-    this.cellSize = cellSize;
-    this.maxPerCell = maxPerCell;
-    this.cols = (width / cellSize) | 0;
-    const rows = (height / cellSize) | 0;
-    this.grid = new Int32Array(this.cols * rows * maxPerCell).fill(-1);
-    this.counts = new Int32Array(this.cols * rows);
+export class InputValidator {
+  private static readonly MAX_INTENSITY = 1.0;
+  private static readonly MIN_INTENSITY = 0.0;
+  private static readonly VALID_ACTIONS = new Set(['jump', 'shoot', 'crouch', 'dash']);
+
+  public static validate(input: unknown): input is GameInput {
+    if (typeof input !== 'object' || input === null) return false;
+    const { id, action, intensity } = input as Record<string, unknown>;
+
+    return (
+      typeof id === 'string' &&
+      typeof action === 'string' &&
+      this.VALID_ACTIONS.has(action) &&
+      typeof intensity === 'number' &&
+      intensity >= this.MIN_INTENSITY &&
+      intensity <= this.MAX_INTENSITY
+    );
   }
+}
 
-  public reset(): void {
-    this.grid.fill(-1);
-    this.counts.fill(0);
-  }
-
-  public add(id: number, x: number, y: number): void {
-    const col = (x / this.cellSize) | 0;
-    const row = (y / this.cellSize) | 0;
-    const idx = col + row * this.cols;
-    if (idx < 0 || idx >= this.counts.length) return;
-    const count = this.counts[idx];
-    if (count < this.maxPerCell) {
-      this.grid[idx * this.maxPerCell + count] = id;
-      this.counts[idx] = count + 1;
+export function processLoop(queue: unknown[]): void {
+  for (const raw of queue) {
+    if (InputValidator.validate(raw)) {
+      const { action, intensity } = raw;
+      console.log(`Executing ${action} at ${intensity * 100}% power`);
+    } else {
+      console.warn('Malformed telemetry packet detected');
     }
-  }
-
-  public query(x: number, y: number, out: Int32Array): number {
-    const cx = (x / this.cellSize) | 0;
-    const cy = (y / this.cellSize) | 0;
-    let count = 0;
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const idx = (cx + dx) + (cy + dy) * this.cols;
-        if (idx >= 0 && idx < this.counts.length) {
-          const size = this.counts[idx];
-          const start = idx * this.maxPerCell;
-          for (let i = 0; i < size && count < out.length; i++) {
-            out[count++] = this.grid[start + i];
-          }
-        }
-      }
-    }
-    return count;
   }
 }
