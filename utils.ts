@@ -1,57 +1,52 @@
-export interface LootItem<T> {
-  id: T;
-  weight: number;
-  pityThreshold?: number;
-}
+export class SpatialGrid {
+  private grid: Int32Array;
+  private counts: Int32Array;
+  private cellSize: number;
+  private cols: number;
+  private maxPerCell: number;
 
-export class PityLootRoller<T extends string | number> {
-  private items: LootItem<T>[];
-  private history: Record<T, number>;
-
-  constructor(items: LootItem<T>[]) {
-    this.items = items;
-    this.history = items.reduce((acc, item) => {
-      acc[item.id] = 0;
-      return acc;
-    }, {} as Record<T, number>);
+  constructor(width: number, height: number, cellSize: number, maxPerCell: number) {
+    this.cellSize = cellSize;
+    this.maxPerCell = maxPerCell;
+    this.cols = (width / cellSize) | 0;
+    const rows = (height / cellSize) | 0;
+    this.grid = new Int32Array(this.cols * rows * maxPerCell).fill(-1);
+    this.counts = new Int32Array(this.cols * rows);
   }
 
-  public roll(): T {
-    for (const item of this.items) {
-      if (item.pityThreshold && this.history[item.id] >= item.pityThreshold) {
-        this.updateHistory(item.id);
-        return item.id;
-      }
-    }
-
-    const weightedPool = this.items.map(item => {
-      const streakMultiplier = 1 + (this.history[item.id] * 0.1);
-      return { id: item.id, weight: item.weight * streakMultiplier };
-    });
-
-    const totalWeight = weightedPool.reduce((acc, curr) => acc + curr.weight, 0);
-    let random = Math.random() * totalWeight;
-
-    for (const item of weightedPool) {
-      random -= item.weight;
-      if (random <= 0) {
-        this.updateHistory(item.id);
-        return item.id;
-      }
-    }
-
-    const fallback = this.items[0].id;
-    this.updateHistory(fallback);
-    return fallback;
+  public reset(): void {
+    this.grid.fill(-1);
+    this.counts.fill(0);
   }
 
-  private updateHistory(winnerId: T): void {
-    this.items.forEach(item => {
-      if (item.id === winnerId) {
-        this.history[item.id] = 0;
-      } else {
-        this.history[item.id] = (this.history[item.id] || 0) + 1;
+  public add(id: number, x: number, y: number): void {
+    const col = (x / this.cellSize) | 0;
+    const row = (y / this.cellSize) | 0;
+    const idx = col + row * this.cols;
+    if (idx < 0 || idx >= this.counts.length) return;
+    const count = this.counts[idx];
+    if (count < this.maxPerCell) {
+      this.grid[idx * this.maxPerCell + count] = id;
+      this.counts[idx] = count + 1;
+    }
+  }
+
+  public query(x: number, y: number, out: Int32Array): number {
+    const cx = (x / this.cellSize) | 0;
+    const cy = (y / this.cellSize) | 0;
+    let count = 0;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const idx = (cx + dx) + (cy + dy) * this.cols;
+        if (idx >= 0 && idx < this.counts.length) {
+          const size = this.counts[idx];
+          const start = idx * this.maxPerCell;
+          for (let i = 0; i < size && count < out.length; i++) {
+            out[count++] = this.grid[start + i];
+          }
+        }
       }
-    });
+    }
+    return count;
   }
 }
