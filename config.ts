@@ -1,28 +1,45 @@
-export type GameConfig = { sensitivity: number; volume: number; debug: boolean };
+export interface LogEntry {
+  timestamp: number;
+  level: 'INFO' | 'WARN' | 'ERROR' | 'QUEST';
+  message: string;
+  meta?: Record<string, unknown>;
+}
 
-export const validateConfig = (data: unknown): GameConfig => {
-  const defaultConfig: GameConfig = { sensitivity: 1.0, volume: 0.5, debug: false };
+export class GameLogRotator {
+  private logs: LogEntry[] = [];
+  private currentSlot = 1;
+  private readonly maxEntriesPerSlot: number;
+  private readonly maxSlots: number;
+  private readonly archive: Map<number, LogEntry[]> = new Map();
 
-  try {
-    if (typeof data !== 'object' || data === null) throw new Error('invalid structure');
-    
-    const input = data as Record<string, unknown>;
-    return {
-      sensitivity: typeof input.sensitivity === 'number' ? Math.max(0, input.sensitivity) : defaultConfig.sensitivity,
-      volume: typeof input.volume === 'number' ? Math.min(Math.max(input.volume, 0), 1) : defaultConfig.volume,
-      debug: !!input.debug
-    };
-  } catch (err) {
-    console.warn('config schema violation, reverting to defaults', err);
-    return defaultConfig;
+  constructor(maxEntriesPerSlot = 50, maxSlots = 3) {
+    this.maxEntriesPerSlot = maxEntriesPerSlot;
+    this.maxSlots = maxSlots;
   }
-};
 
-export const loadConfig = (blob: string): GameConfig => {
-  const sanitize = (raw: string): string => raw.replace(/[^a-zA-Z0-9:.,_{}\[\]\-]/g, '');
-  try {
-    return validateConfig(JSON.parse(sanitize(blob)));
-  } catch {
-    return { sensitivity: 1.0, volume: 0.5, debug: false };
+  public log(level: LogEntry['level'], message: string, meta?: Record<string, unknown>): void {
+    const entry: LogEntry = { timestamp: Date.now(), level, message, meta };
+    this.logs.push(entry);
+
+    if (this.logs.length >= this.maxEntriesPerSlot) {
+      this.rotate();
+    }
   }
-};
+
+  private rotate(): void {
+    this.archive.set(this.currentSlot, [...this.logs]);
+    this.logs = [];
+    this.currentSlot = (this.currentSlot % this.maxSlots) + 1;
+    console.warn(`[SYSTEM] Log rotation triggered. Active slot is now ${this.currentSlot}`);
+  }
+
+  public dumpSlot(slot: number): LogEntry[] {
+    return this.archive.get(slot) || (slot === this.currentSlot ? this.logs : []);
+  }
+
+  public getActiveLogs(): LogEntry[] {
+    return [...this.logs];
+  }
+}
+
+export const gameLogger = new GameLogRotator(30, 4);
