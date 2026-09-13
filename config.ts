@@ -1,45 +1,67 @@
-export interface LogEntry {
-  timestamp: number;
-  level: 'INFO' | 'WARN' | 'ERROR' | 'QUEST';
-  message: string;
-  meta?: Record<string, unknown>;
+export interface GameConfig {
+  fpsLimit: number;
+  renderScale: number;
+  fov: number;
+  difficultyMultiplier: number;
+  debugMode: boolean;
+  audio: {
+    master: number;
+    sfx: number;
+  };
 }
 
-export class GameLogRotator {
-  private logs: LogEntry[] = [];
-  private currentSlot = 1;
-  private readonly maxEntriesPerSlot: number;
-  private readonly maxSlots: number;
-  private readonly archive: Map<number, LogEntry[]> = new Map();
+const FALLBACK_CONFIG: GameConfig = {
+  fpsLimit: 60,
+  renderScale: 1.0,
+  fov: 90,
+  difficultyMultiplier: 1.0,
+  debugMode: false,
+  audio: { master: 0.8, sfx: 1.0 },
+};
 
-  constructor(maxEntriesPerSlot = 50, maxSlots = 3) {
-    this.maxEntriesPerSlot = maxEntriesPerSlot;
-    this.maxSlots = maxSlots;
+export class ConfigValidationError extends Error {
+  constructor(public readonly keyPath: string, public readonly anomaly: string) {
+    super(`[Config Edge Case] Anomaly detected at "${keyPath}": ${anomaly}`);
+    this.name = 'ConfigValidationError';
   }
+}
 
-  public log(level: LogEntry['level'], message: string, meta?: Record<string, unknown>): void {
-    const entry: LogEntry = { timestamp: Date.now(), level, message, meta };
-    this.logs.push(entry);
-
-    if (this.logs.length >= this.maxEntriesPerSlot) {
-      this.rotate();
+export function createResilientConfig(rawInput: unknown): GameConfig {
+  const sanitizeNumber = (val: unknown, min: number, max: number, fallback: number, keyPath: string): number => {
+    if (typeof val !== 'number' || Number.isNaN(val) || !Number.isFinite(val)) {
+      console.warn(new ConfigValidationError(keyPath, `Invalid numeric '${val}', reverting to ${fallback}`).message);
+      return fallback;
     }
-  }
+    if (val < min || val > max) {
+      const clamped = Math.max(min, Math.min(max, val));
+      console.warn(new ConfigValidationError(keyPath, `Value ${val} out of bounds [${min}, ${max}], clamped to ${clamped}`).message);
+      return clamped;
+    }
+    return val;
+  };
 
-  private rotate(): void {
-    this.archive.set(this.currentSlot, [...this.logs]);
-    this.logs = [];
-    this.currentSlot = (this.currentSlot % this.maxSlots) + 1;
-    console.warn(`[SYSTEM] Log rotation triggered. Active slot is now ${this.currentSlot}`);
-  }
+  const safeInput = (typeof rawInput === 'object' && rawInput !== null) ? (rawInput as Record<string, any>) : {};
+  const audioObj = (typeof safeInput.audio === 'object' && safeInput.audio !== null) ? safeInput.audio : {};
 
-  public dumpSlot(slot: number): LogEntry[] {
-    return this.archive.get(slot) || (slot === this.currentSlot ? this.logs : []);
-  }
+  const resolved: GameConfig = {
+    fpsLimit: Math.floor(sanitizeNumber(safeInput.fpsLimit, 15, 360, FALLBACK_CONFIG.fpsLimit, 'fpsLimit')),
+    renderScale: sanitizeNumber(safeInput.renderScale, 0.1, 4.0, FALLBACK_CONFIG.renderScale, 'renderScale'),
+    fov: sanitizeNumber(safeInput.fov, 30, 140, FALLBACK_CONFIG.fov, 'fov'),
+    difficultyMultiplier: sanitizeNumber(safeInput.difficultyMultiplier, 0.1, 10.0, FALLBACK_CONFIG.difficultyMultiplier, 'difficultyMultiplier'),
+    debugMode: typeof safeInput.debugMode === 'boolean' ? safeInput.debugMode : FALLBACK_CONFIG.debugMode,
+    audio: {
+      master: sanitizeNumber(audioObj.master, 0.0, 1.0, FALLBACK_CONFIG.audio.master, 'audio.master'),
+      sfx: sanitizeNumber(audioObj.sfx, 0.0, 1.0, FALLBACK_CONFIG.audio.sfx, 'audio.sfx'),
+    },
+  };
 
-  public getActiveLogs(): LogEntry[] {
-    return [...this.logs];
-  }
+  return new Proxy(resolved, {
+    get(target, prop, receiver) {
+      if (Reflect.has(target, prop)) {
+        return Reflect.get(target, prop, receiver);
+      }
+      console.warn(`[Config Edge Case] Access to missing key "${String(prop)}", returning undefined safely`);
+      return undefined;
+    },
+  });
 }
-
-export const gameLogger = new GameLogRotator(30, 4);
