@@ -1,54 +1,37 @@
-export interface LootDropConfig {
-  baseChance: number;
-  pityIncrement: number;
-  maxRollsBeforeGuaranteed: number;
-}
-
-export interface LootRollState {
-  failedRollsCount: number;
-  seed: number;
+export interface RetryConfig {
+  retries: number;
+  delayMs: number;
+  luckFactor?: number; // Chance (0-1) to trigger an 'instant respawn' bypassing wait
 }
 
 /**
- * Unusual loot drop roller utilizing a deterministic LCG pseudo-random algorithm
- * integrated with a progressive pity/bad-luck mitigation calculator.
+ * Executes a network operation (e.g., fetching multiplayer state) with game-themed retry logic.
+ * Incorporates exponential backoff modified by a 'luck' factor for instant retries.
  */
-export function rollForLoot(
-  config: LootDropConfig,
-  state: LootRollState
-): { success: boolean; nextState: LootRollState } {
-  // Minimal Standard LCG multiplier and modulo
-  const multiplier = 16807;
-  const modulo = 2147483647;
-  
-  const nextSeed = (state.seed * multiplier) % modulo;
-  const randomValue = nextSeed / modulo;
+export async function executeWithRespawn<T>(
+  operation: () => Promise<T>,
+  config: RetryConfig
+): Promise<T> {
+  const { retries, delayMs, luckFactor = 0.15 } = config;
+  let lastError: unknown;
 
-  const effectiveChance = Math.min(
-    config.baseChance + state.failedRollsCount * config.pityIncrement,
-    1.0
-  );
+  for (let attempt = 1; attempt <= retries + 1; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt > retries) {
+        break;
+      }
 
-  const isGuaranteed = state.failedRollsCount >= config.maxRollsBeforeGuaranteed;
-  const success = isGuaranteed || randomValue < effectiveChance;
+      // Game mechanic: Lucky escape from the backoff penalty delay
+      const isLucky = Math.random() < luckFactor;
+      const exponentialBackoff = delayMs * Math.pow(2, attempt - 1);
+      const activeDelay = isLucky ? 0 : exponentialBackoff;
 
-  return {
-    success,
-    nextState: {
-      failedRollsCount: success ? 0 : state.failedRollsCount + 1,
-      seed: nextSeed,
-    },
-  };
-}
-
-/**
- * Creates a stable deterministic numeric seed from dynamic player metrics.
- */
-export function generatePlayerSeed(playerName: string, level: number): number {
-  let hash = 0;
-  for (let i = 0; i < playerName.length; i++) {
-    hash = (hash << 5) - hash + playerName.charCodeAt(i);
-    hash |= 0;
+      await new Promise((resolve) => setTimeout(resolve, activeDelay));
+    }
   }
-  return Math.abs(hash + level) || 1;
+
+  throw new Error(`connection lost after ${retries + 1} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
