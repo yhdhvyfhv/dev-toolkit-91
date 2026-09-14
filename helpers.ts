@@ -1,33 +1,31 @@
-export class GameError extends Error {
-  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
-    super(message);
-    this.name = 'GameError';
-  }
-}
+export type GameEntity = { id: string; state: 'active' | 'cooldown' | 'idle'; ticks: number };
 
-export const safeExecute = <T>(fn: () => T, fallback: T): T => {
-  try {
-    return fn();
-  } catch (err) {
-    console.error(`[dev-toolkit-91] engine failure: ${err instanceof Error ? err.message : 'unknown'}`);
-    return fallback;
-  }
+export const sanitizeGameState = (entities: GameEntity[]): GameEntity[] => {
+  return entities.filter((e) => e.ticks >= 0).map((e) => ({
+    ...e,
+    state: e.ticks > 0 ? 'active' : 'idle',
+  }));
 };
 
-export const assertState = (condition: boolean, msg: string, context?: Record<string, unknown>): void => {
-  if (!condition) {
-    throw new GameError('STATE_VIOLATION', msg, context);
-  }
+export const tickProcessor = (entities: GameEntity[], delta: number): GameEntity[] => {
+  const process = (e: GameEntity): GameEntity => ({
+    ...e,
+    ticks: Math.max(0, e.ticks - delta),
+  });
+  return entities.map(process);
 };
 
-export const recoverState = async <T>(task: () => Promise<T>, retries = 3): Promise<T> => {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await task();
-    } catch (e) {
-      if (i === retries - 1) throw e;
-      await new Promise((r) => setTimeout(r, Math.pow(2, i) * 100));
-    }
-  }
-  throw new GameError('RECOVERY_FAILED', 'exhausted retries');
+export const entityRegistry = {
+  create: (id: string): GameEntity => ({ id, state: 'idle', ticks: 0 }),
+  stringify: (e: GameEntity): string => JSON.stringify(e),
+  parse: (s: string): GameEntity => JSON.parse(s),
+};
+
+export const getThroughput = (entities: GameEntity[]): number => {
+  const activeCount = entities.reduce((acc, curr) => (curr.state === 'active' ? acc + 1 : acc), 0);
+  return activeCount > 0 ? activeCount / entities.length : 0;
+};
+
+export const bulkUpdate = <T>(arr: T[], fn: (item: T) => T): T[] => {
+  return arr.map(fn);
 };
