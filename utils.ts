@@ -1,37 +1,35 @@
-export interface RetryConfig {
-  retries: number;
-  delayMs: number;
-  luckFactor?: number; // Chance (0-1) to trigger an 'instant respawn' bypassing wait
+const memoCache = new Map<string, any>();
+
+export const computeFrameBudget = (delta: number, sensitivity: number): number => {
+  const key = `${delta}-${sensitivity}`;
+  if (memoCache.has(key)) return memoCache.get(key)!;
+
+  const result = Math.min(16.67, delta * sensitivity) / (1 + Math.log10(delta + 1));
+  
+  if (memoCache.size > 1000) memoCache.clear();
+  memoCache.set(key, result);
+  return result;
+};
+
+export function spatialHash<T>(items: T[], radius: number): Map<string, T[]> {
+  const grid = new Map<string, T[]>();
+  for (const item of items) {
+    const x = Math.floor((item as any).x / radius);
+    const y = Math.floor((item as any).y / radius);
+    const key = `${x}:${y}`;
+    if (!grid.has(key)) grid.set(key, []);
+    grid.get(key)!.push(item);
+  }
+  return grid;
 }
 
-/**
- * Executes a network operation (e.g., fetching multiplayer state) with game-themed retry logic.
- * Incorporates exponential backoff modified by a 'luck' factor for instant retries.
- */
-export async function executeWithRespawn<T>(
-  operation: () => Promise<T>,
-  config: RetryConfig
-): Promise<T> {
-  const { retries, delayMs, luckFactor = 0.15 } = config;
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= retries + 1; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-      if (attempt > retries) {
-        break;
-      }
-
-      // Game mechanic: Lucky escape from the backoff penalty delay
-      const isLucky = Math.random() < luckFactor;
-      const exponentialBackoff = delayMs * Math.pow(2, attempt - 1);
-      const activeDelay = isLucky ? 0 : exponentialBackoff;
-
-      await new Promise((resolve) => setTimeout(resolve, activeDelay));
-    }
+export class Pool<T> {
+  private storage: T[] = [];
+  constructor(private factory: () => T) {}
+  acquire(): T {
+    return this.storage.pop() ?? this.factory();
   }
-
-  throw new Error(`connection lost after ${retries + 1} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+  release(item: T): void {
+    if (this.storage.length < 500) this.storage.push(item);
+  }
 }
