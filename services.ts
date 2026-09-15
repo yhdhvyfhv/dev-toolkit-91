@@ -1,31 +1,29 @@
-export type GameEntity = { id: string; health: number; active: boolean };
+interface GameEntity { id: string; state: 'active' | 'archived'; update: () => void; }
 
-export const calculateDamage = (base: number, critMultiplier: number = 2): number => 
-  Math.floor(base * (Math.random() > 0.8 ? critMultiplier : 1));
+const registry = new Map<string, GameEntity>();
 
-export const filterActiveEntities = (entities: GameEntity[]): GameEntity[] => 
-  entities.filter(e => e.active && e.health > 0);
-
-export const chunkArray = <T>(arr: T[], size: number): T[][] =>
-  Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => 
-    arr.slice(i * size, i * size + size));
-
-export const lerp = (start: number, end: number, alpha: number): number => 
-  start + alpha * (end - start);
-
-export const getEntityStats = (entities: GameEntity[]): { totalHealth: number, count: number } =>
-  entities.reduce((acc, curr) => ({
-    totalHealth: acc.totalHealth + curr.health,
-    count: acc.count + 1
-  }), { totalHealth: 0, count: 0 });
-
-export const throttle = <T extends (...args: any[]) => void>(fn: T, ms: number) => {
-  let lastCall = 0;
-  return (...args: Parameters<T>) => {
-    const now = Date.now();
-    if (now - lastCall >= ms) {
-      lastCall = now;
-      fn(...args);
+export const cleanupSystem = {
+  purgeInactive: (): void => {
+    for (const [key, entity] of registry.entries()) {
+      if (entity.state === 'archived') registry.delete(key);
     }
-  };
+  },
+  register: (e: GameEntity) => registry.set(e.id, e),
+};
+
+export class EntityFactory {
+  static createPlayer(id: string): GameEntity {
+    return {
+      id,
+      state: 'active',
+      update: () => console.log(`tick ${id}`),
+    };
+  }
+}
+
+export const batchProcess = <T>(items: T[], fn: (i: T) => void): void => {
+  const sliceSize = 10;
+  for (let i = 0; i < items.length; i += sliceSize) {
+    items.slice(i, i + sliceSize).forEach(fn);
+  }
 };
