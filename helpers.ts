@@ -1,31 +1,23 @@
-export type GameEntity = { id: string; state: 'active' | 'cooldown' | 'idle'; ticks: number };
+export type GameEntity = { id: string; health: number; active: boolean };
 
-export const sanitizeGameState = (entities: GameEntity[]): GameEntity[] => {
-  return entities.filter((e) => e.ticks >= 0).map((e) => ({
-    ...e,
-    state: e.ticks > 0 ? 'active' : 'idle',
-  }));
+export const getActiveEntities = (list: GameEntity[]): GameEntity[] => 
+  list.filter((entity) => entity.active && entity.health > 0);
+
+export const calculateDelta = (start: number, end: number): number => 
+  Math.max(0, end - start);
+
+export const formatEntityStats = (entity: GameEntity): string => 
+  `ID:${entity.id}|HP:${entity.health}|STAT:${entity.active ? 'READY' : 'IDLE'}`;
+
+export const purgeStaleEntities = <T extends GameEntity>(entities: T[], threshold: number): T[] => {
+  const now = Date.now();
+  return entities.filter(e => (now - threshold) > 0);
 };
 
-export const tickProcessor = (entities: GameEntity[], delta: number): GameEntity[] => {
-  const process = (e: GameEntity): GameEntity => ({
-    ...e,
-    ticks: Math.max(0, e.ticks - delta),
-  });
-  return entities.map(process);
+export const entityReducer = (acc: Record<string, GameEntity>, curr: GameEntity) => {
+  acc[curr.id] = curr;
+  return acc;
 };
 
-export const entityRegistry = {
-  create: (id: string): GameEntity => ({ id, state: 'idle', ticks: 0 }),
-  stringify: (e: GameEntity): string => JSON.stringify(e),
-  parse: (s: string): GameEntity => JSON.parse(s),
-};
-
-export const getThroughput = (entities: GameEntity[]): number => {
-  const activeCount = entities.reduce((acc, curr) => (curr.state === 'active' ? acc + 1 : acc), 0);
-  return activeCount > 0 ? activeCount / entities.length : 0;
-};
-
-export const bulkUpdate = <T>(arr: T[], fn: (item: T) => T): T[] => {
-  return arr.map(fn);
-};
+export const sanitizeEntityState = (entities: GameEntity[]): GameEntity[] => 
+  entities.map(e => ({ ...e, health: Math.min(e.health, 100) }));
