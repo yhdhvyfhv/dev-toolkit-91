@@ -1,23 +1,58 @@
-export type GameEntity = { id: string; health: number; active: boolean };
+export interface RawInputFrame {
+  frameId: number;
+  timestamp: number;
+  buttons: number;
+  axes: [number, number];
+  playerId: string;
+}
 
-export const getActiveEntities = (list: GameEntity[]): GameEntity[] => 
-  list.filter((entity) => entity.active && entity.health > 0);
+export interface ValidatedInputFrame extends RawInputFrame {
+  isValid: boolean;
+  sanitizedAxes: [number, number];
+  flags: string[];
+}
 
-export const calculateDelta = (start: number, end: number): number => 
-  Math.max(0, end - start);
+const BUTTON_MASK_ALL = 0b1111;
 
-export const formatEntityStats = (entity: GameEntity): string => 
-  `ID:${entity.id}|HP:${entity.health}|STAT:${entity.active ? 'READY' : 'IDLE'}`;
+export function* processAndValidateInputs(
+  rawInputs: RawInputFrame[],
+  lastTimestamp = 0
+): Generator<ValidatedInputFrame, void, unknown> {
+  let prevTime = lastTimestamp;
 
-export const purgeStaleEntities = <T extends GameEntity>(entities: T[], threshold: number): T[] => {
-  const now = Date.now();
-  return entities.filter(e => (now - threshold) > 0);
-};
+  for (const raw of rawInputs) {
+    const flags: string[] = [];
+    let isValid = true;
 
-export const entityReducer = (acc: Record<string, GameEntity>, curr: GameEntity) => {
-  acc[curr.id] = curr;
-  return acc;
-};
+    if (!raw.playerId || !/^player_[a-z0-9]{4,8}$/.test(raw.playerId)) {
+      isValid = false;
+      flags.push('INVALID_PLAYER_ID');
+    }
 
-export const sanitizeEntityState = (entities: GameEntity[]): GameEntity[] => 
-  entities.map(e => ({ ...e, health: Math.min(e.health, 100) }));
+    if (typeof raw.timestamp !== 'number' || raw.timestamp <= prevTime) {
+      isValid = false;
+      flags.push('TIMESTAMP_ANOMALY');
+    } else {
+      prevTime = raw.timestamp;
+    }
+
+    if ((raw.buttons & ~BUTTON_MASK_ALL) !== 0) {
+      flags.push('UNKNOWN_BUTTON_BITS_STRIPPED');
+    }
+    const cleanButtons = raw.buttons & BUTTON_MASK_ALL;
+
+    const clamp = (v: number) => Math.max(-1.0, Math.min(1.0, Number.isFinite(v) ? v : 0));
+    const [x, y] = Array.isArray(raw.axes) && raw.axes.length === 2 ? raw.axes : [0, 0];
+    if (Math.abs(x) > 1.0 || Math.abs(y) > 1.0) {
+      flags.push('AXIS_CLAMPED');
+    }
+
+    yield {
+      ...raw,
+      buttons: cleanButtons,
+      isValid,
+      sanitizedAxes: [clamp(x), clamp(y)],
+      flags
+    };
+  }
+}
