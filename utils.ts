@@ -1,42 +1,67 @@
-/**
- * Represents a game coordinate in 3D space.
- */
-export interface Vector3 {
-  x: number;
-  y: number;
-  z: number;
+export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+export interface LootTableItem {
+  id: string;
+  rarity: Rarity;
+  baseWeight: number;
+}
+
+export interface PlayerLootState {
+  pityCount: number;
+  badLuckStreak: number;
+}
+
+export interface RollResult {
+  selectedItem: LootTableItem;
+  nextState: PlayerLootState;
 }
 
 /**
- * Calculates the manhattan distance between two points, 
- * commonly used for grid-based pathfinding in dev-toolkit-91.
+ * Resolves loot drops using an elastic weighting formula that increases drop rates
+ * for legendary and epic items based on the player's pity counter.
  */
-export const getGridDistance = (a: Vector3, b: Vector3): number => {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + Math.abs(a.z - b.z);
-};
-
-/**
- * A generator for unique entity identifiers based on high-resolution timestamps
- * and a bitwise seed for collision-resistant gaming objects.
- */
-export function* entityIdGenerator(seed: number = 0): Generator<string> {
-  let counter = seed;
-  while (true) {
-    yield `dev-tk-${(Date.now() ^ counter++).toString(16)}`;
+export function resolveElasticLoot(
+  table: LootTableItem[],
+  state: PlayerLootState,
+  pityThreshold = 10,
+  pityMultiplier = 1.5
+): RollResult {
+  if (table.length === 0) {
+    throw new Error('Loot table cannot be empty');
   }
-}
 
-/**
- * Memoization decorator to cache physics calculation results 
- * preventing redundant expensive floating point arithmetic.
- */
-export const cachePhysics = <T extends any[], R>(fn: (...args: T) => R) => {
-  const cache = new Map<string, R>();
-  return (...args: T): R => {
-    const key = JSON.stringify(args);
-    if (cache.has(key)) return cache.get(key)!;
-    const result = fn(...args);
-    cache.set(key, result);
-    return result;
+  const elasticTable = table.map((item) => {
+    let weight = item.baseWeight;
+    if (state.pityCount >= pityThreshold) {
+      if (item.rarity === 'legendary') {
+        weight *= (1 + (state.pityCount - pityThreshold) * pityMultiplier);
+      } else if (item.rarity === 'epic') {
+        weight *= (1 + (state.pityCount - pityThreshold) * (pityMultiplier * 0.5));
+      }
+    }
+    return { item, adjustedWeight: weight };
+  });
+
+  const totalWeight = elasticTable.reduce((sum, entry) => sum + entry.adjustedWeight, 0);
+  let roll = Math.random() * totalWeight;
+
+  let selectedEntry = elasticTable[0];
+  for (const entry of elasticTable) {
+    roll -= entry.adjustedWeight;
+    if (roll <= 0) {
+      selectedEntry = entry;
+      break;
+    }
+  }
+
+  const rolledItem = selectedEntry.item;
+  const isRareOrBetter = rolledItem.rarity === 'epic' || rolledItem.rarity === 'legendary';
+
+  return {
+    selectedItem: rolledItem,
+    nextState: {
+      pityCount: isRareOrBetter ? 0 : state.pityCount + 1,
+      badLuckStreak: rolledItem.rarity === 'common' ? state.badLuckStreak + 1 : 0
+    }
   };
-};
+}
