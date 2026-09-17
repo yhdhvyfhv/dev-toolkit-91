@@ -1,13 +1,13 @@
 # dev-toolkit-91
 
-A high-performance TypeScript utility library designed to streamline game development workflows and engine-agnostic logic. It provides robust abstractions for real-time game state management, physics calculation helpers, and entity-component system (ECS) utilities.
+A high-performance TypeScript utility library designed to streamline game logic implementation and state management. This toolkit provides specialized hooks and data structures to minimize boilerplate code in browser-based game development.
 
 ## Features
 
-*   **State Sync Engine:** Optimized state reconciliation helpers for multiplayer synchronization and snapshot interpolation.
-*   **Vector Math Utilities:** A suite of high-precision TypeScript math functions specifically tuned for 2D/3D collision detection and transformation matrices.
-*   **Asset Lifecycle Manager:** A Promise-based preloader for textures, sounds, and sprite sheets with built-in retry logic and progress tracking.
-*   **Deterministic RNG:** A seedable random number generator designed to keep logic consistent across client-server environments.
+*   **Entity-Component System (ECS):** A lightweight, memory-efficient ECS framework built for real-time game state synchronization.
+*   **Vector & Math Math Utilities:** Optimized 2D/3D vector math functions designed for smooth movement and collision detection.
+*   **Input Handling:** Robust event-driven input polling for keyboard, mouse, and gamepad support with configurable binding maps.
+*   **Asset Preloader:** Asynchronous resource management system that tracks loading states for textures, audio, and JSON manifests.
 
 ## Installation
 
@@ -25,20 +25,25 @@ yarn add dev-toolkit-91
 
 ## Usage
 
-Import the utility modules to handle complex game loops or coordinate transformations:
+Import the core modules to initialize your game state and input listeners:
 
 ```typescript
-import { Vector2, RNG } from 'dev-toolkit-91';
+import { Engine, Vector2, InputManager } from 'dev-toolkit-91';
 
-// Initialize a seeded generator for procedural generation
-const random = new RNG('seed-value-123');
-const spawnPosition = new Vector2(random.next(0, 800), random.next(0, 600));
+const game = new Engine({ width: 800, height: 600 });
+const input = new InputManager();
 
-console.log(`Entity spawned at: ${spawnPosition.x}, ${spawnPosition.y}`);
+input.bind('ArrowRight', () => {
+  console.log('Player moved right');
+});
+
+game.update((dt) => {
+  // Logic execution
+});
 ```
 
 ## License
 
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Distributed under the MIT License. See `LICENSE` for more information.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
