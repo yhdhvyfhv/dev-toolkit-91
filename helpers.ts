@@ -1,58 +1,28 @@
-export interface RawInputFrame {
-  frameId: number;
-  timestamp: number;
-  buttons: number;
-  axes: [number, number];
-  playerId: string;
-}
+export type GameEntity = { id: string; health: number; stats: Record<string, number> };
 
-export interface ValidatedInputFrame extends RawInputFrame {
-  isValid: boolean;
-  sanitizedAxes: [number, number];
-  flags: string[];
-}
+export const calculateDamage = (target: GameEntity, base: number, multiplier: number = 1.0): number => {
+  const mitigation = target.stats['armor'] || 0;
+  const rawDamage = Math.max(0, base * multiplier - mitigation * 0.5);
+  return Math.floor(rawDamage);
+};
 
-const BUTTON_MASK_ALL = 0b1111;
+export const batchProcessEntities = <T>(items: T[], fn: (item: T) => T): T[] => {
+  return items.map((item) => ({
+    ...fn(item),
+    timestamp: Date.now(),
+    processed: true,
+  }));
+};
 
-export function* processAndValidateInputs(
-  rawInputs: RawInputFrame[],
-  lastTimestamp = 0
-): Generator<ValidatedInputFrame, void, unknown> {
-  let prevTime = lastTimestamp;
+export const lerpEntityHealth = (current: number, target: number, speed: number): number => {
+  return current + (target - current) * Math.min(1, Math.max(0, speed));
+};
 
-  for (const raw of rawInputs) {
-    const flags: string[] = [];
-    let isValid = true;
+export const sanitizeGameState = (data: any): GameEntity => {
+  const schema = { id: 'unknown', health: 100, stats: {} };
+  return { ...schema, ...data };
+};
 
-    if (!raw.playerId || !/^player_[a-z0-9]{4,8}$/.test(raw.playerId)) {
-      isValid = false;
-      flags.push('INVALID_PLAYER_ID');
-    }
-
-    if (typeof raw.timestamp !== 'number' || raw.timestamp <= prevTime) {
-      isValid = false;
-      flags.push('TIMESTAMP_ANOMALY');
-    } else {
-      prevTime = raw.timestamp;
-    }
-
-    if ((raw.buttons & ~BUTTON_MASK_ALL) !== 0) {
-      flags.push('UNKNOWN_BUTTON_BITS_STRIPPED');
-    }
-    const cleanButtons = raw.buttons & BUTTON_MASK_ALL;
-
-    const clamp = (v: number) => Math.max(-1.0, Math.min(1.0, Number.isFinite(v) ? v : 0));
-    const [x, y] = Array.isArray(raw.axes) && raw.axes.length === 2 ? raw.axes : [0, 0];
-    if (Math.abs(x) > 1.0 || Math.abs(y) > 1.0) {
-      flags.push('AXIS_CLAMPED');
-    }
-
-    yield {
-      ...raw,
-      buttons: cleanButtons,
-      isValid,
-      sanitizedAxes: [clamp(x), clamp(y)],
-      flags
-    };
-  }
-}
+export const generateEntityId = (prefix: string = 'dev'): string => {
+  return `${prefix}_${Math.random().toString(36).slice(2, 9)}_${Date.now().toString(36)}`;
+};
