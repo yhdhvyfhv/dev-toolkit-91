@@ -1,29 +1,33 @@
-export type GameResult<T> = { success: true; data: T } | { success: false; error: string; code: number };
-
-export const catchGamingErrors = <T>(fn: () => T): GameResult<T> => {
-  try {
-    return { success: true, data: fn() };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'unknown glitched state';
-    const code = typeof err === 'object' && err !== null && 'code' in err ? (err as any).code : 500;
-    
-    console.warn(`[dev-toolkit-91] trap triggered: ${message}`);
-    return { success: false, error: message, code: code as number };
+export class GameError extends Error {
+  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
+    super(message);
+    Object.setPrototypeOf(this, GameError.prototype);
   }
-};
+}
 
-export const assertGameState = (condition: boolean, msg: string, code: number = 400): void => {
-  if (!condition) {
-    const glitch = new Error(msg) as Error & { code: number };
-    glitch.code = code;
-    throw glitch;
-  }
-};
-
-export const safeExecute = async <T>(promise: Promise<T>): Promise<GameResult<T>> => {
+export const safeExecute = <T>(fn: () => T, fallback: T): T => {
   try {
-    return { success: true, data: await promise };
+    return fn();
   } catch (err) {
-    return catchGamingErrors(() => { throw err; });
+    console.error('[dev-toolkit-91] Caught instability:', err);
+    return fallback;
   }
+};
+
+export const assertGameState = (condition: boolean, msg: string, context?: Record<string, unknown>): void => {
+  if (!condition) {
+    throw new GameError('INVALID_STATE', msg, context);
+  }
+};
+
+export const retryOperation = async <T>(op: () => Promise<T>, retries = 3): Promise<T> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await op();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await new Promise((r) => setTimeout(r, Math.pow(2, i) * 100));
+    }
+  }
+  throw new GameError('MAX_RETRIES_EXCEEDED', 'Operation failed after retries');
 };
