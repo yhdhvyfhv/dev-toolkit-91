@@ -1,30 +1,29 @@
-interface GameConfig {
-  renderScale: number;
-  audioVolume: number;
-  debugMode: boolean;
-}
+export type GameResult<T> = { success: true; data: T } | { success: false; error: string; code: number };
 
-const DEFAULT_CONFIG: GameConfig = {
-  renderScale: 1.0,
-  audioVolume: 0.8,
-  debugMode: false
+export const catchGamingErrors = <T>(fn: () => T): GameResult<T> => {
+  try {
+    return { success: true, data: fn() };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'unknown glitched state';
+    const code = typeof err === 'object' && err !== null && 'code' in err ? (err as any).code : 500;
+    
+    console.warn(`[dev-toolkit-91] trap triggered: ${message}`);
+    return { success: false, error: message, code: code as number };
+  }
 };
 
-/**
- * recursive proxy-based deep merge loader
- * overrides base defaults with user input
- */
-export function loadConfig<T extends object>(userConfig: Partial<T>, defaults: T): T {
-  const config = { ...defaults };
-  for (const key in userConfig) {
-    if (userConfig[key] !== undefined) {
-      (config as any)[key] = userConfig[key];
-    }
+export const assertGameState = (condition: boolean, msg: string, code: number = 400): void => {
+  if (!condition) {
+    const glitch = new Error(msg) as Error & { code: number };
+    glitch.code = code;
+    throw glitch;
   }
-  return config;
-}
+};
 
-export const gameSettings = loadConfig<GameConfig>(
-  JSON.parse(localStorage.getItem('dev-toolkit-91-prefs') || '{}'),
-  DEFAULT_CONFIG
-);
+export const safeExecute = async <T>(promise: Promise<T>): Promise<GameResult<T>> => {
+  try {
+    return { success: true, data: await promise };
+  } catch (err) {
+    return catchGamingErrors(() => { throw err; });
+  }
+};
