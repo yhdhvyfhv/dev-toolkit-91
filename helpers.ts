@@ -1,28 +1,34 @@
-export type GameEntity = { id: string; health: number; stats: Record<string, number> };
+export class GameError extends Error {
+  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
+    super(message);
+    this.name = 'GameError';
+  }
+}
 
-export const calculateDamage = (target: GameEntity, base: number, multiplier: number = 1.0): number => {
-  const mitigation = target.stats['armor'] || 0;
-  const rawDamage = Math.max(0, base * multiplier - mitigation * 0.5);
-  return Math.floor(rawDamage);
+export const safeExecute = <T>(fn: () => T, fallback: T, logger: (e: Error) => void): T => {
+  try {
+    return fn();
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    logger(error);
+    return fallback;
+  }
 };
 
-export const batchProcessEntities = <T>(items: T[], fn: (item: T) => T): T[] => {
-  return items.map((item) => ({
-    ...fn(item),
-    timestamp: Date.now(),
-    processed: true,
-  }));
+export const assertGameState = (condition: boolean, msg: string, context?: Record<string, unknown>): void => {
+  if (!condition) {
+    throw new GameError('INVALID_STATE', msg, context);
+  }
 };
 
-export const lerpEntityHealth = (current: number, target: number, speed: number): number => {
-  return current + (target - current) * Math.min(1, Math.max(0, speed));
+export const wrapAsync = async <T>(promise: Promise<T>, defaultValue: T): Promise<T> => {
+  return promise.catch((err) => {
+    console.error(`[dev-toolkit-91] async failure: ${err.message}`);
+    return defaultValue;
+  });
 };
 
-export const sanitizeGameState = (data: any): GameEntity => {
-  const schema = { id: 'unknown', health: 100, stats: {} };
-  return { ...schema, ...data };
-};
-
-export const generateEntityId = (prefix: string = 'dev'): string => {
-  return `${prefix}_${Math.random().toString(36).slice(2, 9)}_${Date.now().toString(36)}`;
+export const pulseCheck = (data: unknown): boolean => {
+  if (data === null || typeof data !== 'object') return false;
+  return 'status' in data && (data as { status: string }).status === 'active';
 };
