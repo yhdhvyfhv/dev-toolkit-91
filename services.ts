@@ -1,29 +1,30 @@
-interface GameEntity { id: string; state: 'active' | 'archived'; update: () => void; }
-
-const registry = new Map<string, GameEntity>();
-
-export const cleanupSystem = {
-  purgeInactive: (): void => {
-    for (const [key, entity] of registry.entries()) {
-      if (entity.state === 'archived') registry.delete(key);
-    }
-  },
-  register: (e: GameEntity) => registry.set(e.id, e),
-};
-
-export class EntityFactory {
-  static createPlayer(id: string): GameEntity {
-    return {
-      id,
-      state: 'active',
-      update: () => console.log(`tick ${id}`),
-    };
-  }
+interface GameConfig {
+  renderScale: number;
+  maxPlayers: number;
+  debugMode: boolean;
 }
 
-export const batchProcess = <T>(items: T[], fn: (i: T) => void): void => {
-  const sliceSize = 10;
-  for (let i = 0; i < items.length; i += sliceSize) {
-    items.slice(i, i + sliceSize).forEach(fn);
-  }
+const DEFAULT_CONFIG: GameConfig = {
+  renderScale: 1.0,
+  maxPlayers: 32,
+  debugMode: false,
+};
+
+export const loadConfiguration = <T extends Partial<GameConfig>>(partial: T): GameConfig => {
+  const config = { ...DEFAULT_CONFIG, ...partial };
+  return new Proxy(config, {
+    get(target, prop: keyof GameConfig) {
+      if (!(prop in target)) {
+        console.warn(`[dev-toolkit-91] property ${String(prop)} missing, returning default`);
+        return DEFAULT_CONFIG[prop];
+      }
+      return target[prop];
+    }
+  });
+};
+
+export const initGameService = (overrides: Partial<GameConfig> = {}) => {
+  const config = loadConfiguration(overrides);
+  console.log(`[dev-toolkit-91] initialized with scale ${config.renderScale}`);
+  return { config };
 };
