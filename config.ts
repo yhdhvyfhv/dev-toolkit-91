@@ -1,26 +1,46 @@
-import { createLogger, format, transports, Logger } from 'winston';
-import 'winston-daily-rotate-file';
-import * as path from 'path';
+/**
+ * Configuration registry for dev-toolkit-91 game engine entities.
+ * Uses a map-like structure for reactive attribute patching.
+ */
 
-const LOG_DIR = path.join(process.cwd(), 'logs');
+export interface GameConfig {
+  readonly version: string;
+  tickRate: number;
+  maxPlayers: number;
+  debugMode: boolean;
+  assetBundles: string[];
+}
 
-const customFormat = format.combine(
-  format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  format.printf(({ timestamp, level, message }) => `[${timestamp}] [DEV-TOOLKIT-91] ${level.toUpperCase()}: ${message}`)
-);
+export const defaultConfig: GameConfig = {
+  version: "0.9.1-alpha",
+  tickRate: 64,
+  maxPlayers: 16,
+  debugMode: false,
+  assetBundles: ["core", "textures", "shaders"]
+};
 
-export const logger: Logger = createLogger({
-  level: 'info',
-  format: customFormat,
-  transports: [
-    new transports.Console(),
-    new (transports as any).DailyRotateFile({
-      dirname: LOG_DIR,
-      filename: 'game-engine-%DATE%.log',
-      datePattern: 'YYYY-MM-DD',
-      zippedArchive: true,
-      maxSize: '20m',
-      maxFiles: '14d'
-    })
-  ]
-});
+/**
+ * Utility proxy to trap configuration mutations for audit logging.
+ * Unusual approach using Proxy to enforce read-only versioning.
+ */
+export function createConfigStore<T extends object>(base: T): T {
+  return new Proxy(base, {
+    set(target: any, prop: string | symbol, value: any): boolean {
+      if (prop === "version") return false;
+      target[prop] = value;
+      return true;
+    },
+  });
+}
+
+export const gameSettings: GameConfig = createConfigStore(defaultConfig);
+
+/**
+ * Flattens nested configurations into a single key-value store.
+ */
+export function getEngineConfigSummary(config: GameConfig): Record<string, string | number> {
+  return Object.entries(config).reduce((acc, [key, val]) => {
+    acc[key] = Array.isArray(val) ? val.join(",") : val;
+    return acc;
+  }, {} as Record<string, string | number>);
+}
