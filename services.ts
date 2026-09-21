@@ -1,32 +1,31 @@
-export type GameEvent = { id: string; payload: unknown };
+interface GameEntity { id: string; health: number; active: boolean; }
 
-export class GamingEngineError extends Error {
-  constructor(public code: string, message: string) {
-    super(message);
-    this.name = 'GamingEngineError';
-  }
-}
-
-export const safeEventProcessor = <T>(
-  processor: (data: T) => T,
-  fallback: T
-) => (input: unknown): T => {
-  try {
-    if (input === null || typeof input !== 'object') {
-      throw new GamingEngineError('INVALID_PAYLOAD', 'Payload is not an object');
-    }
-    return processor(input as T);
-  } catch (err) {
-    const error = err instanceof GamingEngineError ? err : new GamingEngineError('UNHANDLED', 'Crash in engine');
-    console.error(`[dev-toolkit-91] ${error.code}: ${error.message}`);
-    return fallback;
+const stateManager = {
+  pool: new Map<string, GameEntity>(),
+  sanitize: (entities: GameEntity[]) => entities.filter(e => e.active && e.health > 0),
+  sync: (registry: GameEntity[]) => {
+    stateManager.pool.clear();
+    registry.forEach(e => stateManager.pool.set(e.id, e));
   }
 };
 
-export const executeTick = safeEventProcessor<number>(
-  (tick) => {
-    if (tick < 0) throw new GamingEngineError('NEG_TICK', 'Negative frame index');
-    return tick * 2;
-  },
-  0
-);
+export const cleanup = (entities: GameEntity[]): GameEntity[] => {
+  const clean = stateManager.sanitize(entities);
+  stateManager.sync(clean);
+  return clean;
+};
+
+export const fetchActiveUnits = (ids: string[]): GameEntity[] => {
+  return ids.map(id => stateManager.pool.get(id)).filter((e): e is GameEntity => !!e);
+};
+
+export const resetEntityRegistry = (): void => {
+  stateManager.pool.clear();
+};
+
+export type ServiceResponse<T> = { data: T; timestamp: number; };
+
+export const wrapResponse = <T>(data: T): ServiceResponse<T> => ({
+  data,
+  timestamp: Date.now()
+});
