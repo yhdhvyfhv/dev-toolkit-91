@@ -1,59 +1,32 @@
-export interface GameEvent {
-  id: number;
-  type: string;
-  payload: Record<string, any>;
-  timestamp: number;
-}
+export type GameEvent = { id: string; payload: unknown };
 
-export class OptimizedEventDispatcher {
-  private bufferA: GameEvent[];
-  private bufferB: GameEvent[];
-  private activeBuffer: GameEvent[];
-  private inactiveBuffer: GameEvent[];
-  private limit: number;
-  private cursor: number = 0;
-
-  constructor(limit: number = 10000) {
-    this.limit = limit;
-    // Pre-allocate pools to prevent runtime garbage collection pauses
-    this.bufferA = Array.from({ length: limit }, (_, i) => ({ id: i, type: '', payload: {}, timestamp: 0 }));
-    this.bufferB = Array.from({ length: limit }, (_, i) => ({ id: i, type: '', payload: {}, timestamp: 0 }));
-    this.activeBuffer = this.bufferA;
-    this.inactiveBuffer = this.bufferB;
-  }
-
-  public dispatch(type: string, payload: Record<string, any>): void {
-    if (this.cursor >= this.limit) {
-      this.swapBuffers();
-    }
-
-    const event = this.activeBuffer[this.cursor];
-    event.type = type;
-    
-    // High-performance payload recycling instead of object destructuring
-    for (const key in event.payload) {
-      if (Object.prototype.hasOwnProperty.call(event.payload, key)) {
-        delete event.payload[key];
-      }
-    }
-    Object.assign(event.payload, payload);
-    event.timestamp = performance.now();
-
-    this.cursor++;
-  }
-
-  private swapBuffers(): void {
-    const temp = this.activeBuffer;
-    this.activeBuffer = this.inactiveBuffer;
-    this.inactiveBuffer = temp;
-    this.cursor = 0;
-  }
-
-  public flushActive(callback: (event: GameEvent) => void): void {
-    const count = this.cursor;
-    for (let i = 0; i < count; i++) {
-      callback(this.activeBuffer[i]);
-    }
-    this.cursor = 0;
+export class GamingEngineError extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+    this.name = 'GamingEngineError';
   }
 }
+
+export const safeEventProcessor = <T>(
+  processor: (data: T) => T,
+  fallback: T
+) => (input: unknown): T => {
+  try {
+    if (input === null || typeof input !== 'object') {
+      throw new GamingEngineError('INVALID_PAYLOAD', 'Payload is not an object');
+    }
+    return processor(input as T);
+  } catch (err) {
+    const error = err instanceof GamingEngineError ? err : new GamingEngineError('UNHANDLED', 'Crash in engine');
+    console.error(`[dev-toolkit-91] ${error.code}: ${error.message}`);
+    return fallback;
+  }
+};
+
+export const executeTick = safeEventProcessor<number>(
+  (tick) => {
+    if (tick < 0) throw new GamingEngineError('NEG_TICK', 'Negative frame index');
+    return tick * 2;
+  },
+  0
+);
