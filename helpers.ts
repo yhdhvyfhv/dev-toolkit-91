@@ -1,46 +1,21 @@
-/**
- * Represents raw coordinate data from the game engine grid.
- */
-export interface GridCoords {
-  x: number;
-  y: number;
-}
+export type GameEntity = { id: string; health: number; active: boolean };
 
-/**
- * Calculates the Manhattan distance between two game entities.
- * Used primarily for pathfinding heuristics in turn-based combat.
- */
-export const calculateManhattanDistance = (a: GridCoords, b: GridCoords): number => {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+export const calculateDamage = (base: number, critMultiplier: number = 1.5): number => 
+  Math.floor(base * (Math.random() > 0.8 ? critMultiplier : 1));
+
+export const filterActive = (entities: GameEntity[]): GameEntity[] => 
+  entities.filter(({ active }) => active);
+
+export const normalizeVector = (x: number, y: number): { x: number; y: number } => {
+  const mag = Math.hypot(x, y);
+  return mag > 0 ? { x: x / mag, y: y / mag } : { x: 0, y: 0 };
 };
 
-/**
- * Serializes entity state into a compact string representation.
- * This unconventional approach saves bandwidth during multiplayer syncs.
- */
-export const packEntityState = (id: string, hp: number, coords: GridCoords): string => {
-  return `${id}|${hp.toString(16)}|${coords.x},${coords.y}`;
-};
+export const lerp = (start: number, end: number, alpha: number): number => 
+  start + (end - start) * Math.max(0, Math.min(1, alpha));
 
-/**
- * Parses serialized state back into entity components.
- * The hex-encoded HP ensures binary-like size efficiency in text.
- */
-export const unpackEntityState = (data: string): { id: string; hp: number; coords: GridCoords } => {
-  const [id, hexHp, pos] = data.split('|');
-  const [x, y] = pos.split(',').map(Number);
-  return { id, hp: parseInt(hexHp, 16), coords: { x, y } };
-};
+export const generateId = (prefix: string = 'dev'): string => 
+  `${prefix}-${Math.random().toString(36).substring(2, 9)}`;
 
-/**
- * Generates a deterministic pseudo-random seed based on a string.
- * Essential for procedural dungeon generation consistency.
- */
-export const hashSeed = (input: string): number => {
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    hash = (hash << 5) - hash + input.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-};
+export const sequenceActions = <T>(...fns: Array<(arg: T) => T>) => 
+  (initial: T): T => fns.reduce((val, fn) => fn(val), initial);
