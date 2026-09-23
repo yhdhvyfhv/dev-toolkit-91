@@ -1,21 +1,38 @@
-export type GameEntity = { id: string; health: number; active: boolean };
-
-export const calculateDamage = (base: number, critMultiplier: number = 1.5): number => 
-  Math.floor(base * (Math.random() > 0.8 ? critMultiplier : 1));
-
-export const filterActive = (entities: GameEntity[]): GameEntity[] => 
-  entities.filter(({ active }) => active);
-
-export const normalizeVector = (x: number, y: number): { x: number; y: number } => {
-  const mag = Math.hypot(x, y);
-  return mag > 0 ? { x: x / mag, y: y / mag } : { x: 0, y: 0 };
+export const memoizeGameTicker = <T extends (...args: any[]) => any>(fn: T, ttl: number = 16): T => {
+  let lastCall = 0;
+  let lastResult: ReturnType<T>;
+  return ((...args: Parameters<T>) => {
+    const now = performance.now();
+    if (now - lastCall > ttl) {
+      lastResult = fn(...args);
+      lastCall = now;
+    }
+    return lastResult;
+  }) as T;
 };
 
-export const lerp = (start: number, end: number, alpha: number): number => 
-  start + (end - start) * Math.max(0, Math.min(1, alpha));
+export const batchProcess = <T>(items: T[], chunkSize: number = 50): T[][] => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+  return chunks;
+};
 
-export const generateId = (prefix: string = 'dev'): string => 
-  `${prefix}-${Math.random().toString(36).substring(2, 9)}`;
+export const fastObjectCloner = <T>(obj: T): T => {
+  if (typeof structuredClone === 'function') return structuredClone(obj);
+  return JSON.parse(JSON.stringify(obj));
+};
 
-export const sequenceActions = <T>(...fns: Array<(arg: T) => T>) => 
-  (initial: T): T => fns.reduce((val, fn) => fn(val), initial);
+export const throttledRaf = (callback: FrameRequestCallback) => {
+  let ticking = false;
+  return (time: number) => {
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame((t) => {
+        callback(t);
+        ticking = false;
+      });
+    }
+  };
+};
