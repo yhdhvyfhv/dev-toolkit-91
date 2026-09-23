@@ -1,55 +1,33 @@
-export class StatusEffectRegistry {
-  private mask: bigint = 0n;
+export type RetryOptions = {
+  attempts: number;
+  delay: number;
+};
 
-  toggle(flag: number): this {
-    this.mask ^= 1n << BigInt(flag);
-    return this;
+export const withRetry = async <T>(
+  task: () => Promise<T>,
+  options: RetryOptions = { attempts: 3, delay: 1000 }
+): Promise<T> => {
+  let lastError: unknown;
+  
+  for (let i = 0; i < options.attempts; i++) {
+    try {
+      return await task();
+    } catch (err) {
+      lastError = err;
+      if (i < options.attempts - 1) {
+        const jitter = Math.random() * 200;
+        await new Promise((resolve) => setTimeout(resolve, options.delay + jitter));
+      }
+    }
   }
+  
+  throw lastError;
+};
 
-  has(flag: number): boolean {
-    return (this.mask & (1n << BigInt(flag))) !== 0n;
-  }
-
-  hasAll(...flags: number[]): boolean {
-    const query = flags.reduce((acc, f) => acc | (1n << BigInt(f)), 0n);
-    return (this.mask & query) === query;
-  }
-
-  combineWith(other: StatusEffectRegistry): StatusEffectRegistry {
-    const merged = new StatusEffectRegistry();
-    merged.mask = this.mask | other.mask;
-    return merged;
-  }
-
-  exportHex(): string {
-    return '0x' + this.mask.toString(16);
-  }
-
-  static importHex(hex: string): StatusEffectRegistry {
-    const reg = new StatusEffectRegistry();
-    reg.mask = BigInt(hex);
-    return reg;
-  }
-}
-
-export function spatialGridHash(x: number, y: number, cellSize = 64): string {
-  const cx = Math.floor(x / cellSize) | 0;
-  const cy = Math.floor(y / cellSize) | 0;
-  const pair = ((cx + cy) * (cx + cy + 1)) / 2 + cy;
-  return `cell_${(pair ^ 0x5f3759df) >>> 0}`;
-}
-
-export function weightedLootRoll<T>(
-  table: Array<{ item: T; weight: number }>,
-  entropySource: () => number = Math.random
-): T | null {
-  const totalWeight = table.reduce((sum, entry) => sum + Math.max(0, entry.weight), 0);
-  if (totalWeight <= 0) return null;
-
-  let roll = entropySource() * totalWeight;
-  for (const entry of table) {
-    if (roll <= entry.weight) return entry.item;
-    roll -= entry.weight;
-  }
-  return table[0]?.item ?? null;
-}
+export const fetchWithBackoff = async <T>(url: string, init?: RequestInit): Promise<T> => {
+  return withRetry(async () => {
+    const response = await fetch(url, init);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json() as Promise<T>;
+  });
+};
