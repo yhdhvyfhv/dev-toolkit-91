@@ -1,36 +1,35 @@
-import * as fs from 'fs';
-import * as path from 'path';
+type CacheEntry<T> = { value: T; expiry: number };
 
-interface LogConfig {
-  maxSize: number;
-  logFile: string;
+const memoMap = new Map<string, CacheEntry<any>>();
+
+export function memoizeHeavyCompute<T>(key: string, compute: () => T, ttl: number = 5000): T {
+  const now = Date.now();
+  const entry = memoMap.get(key);
+
+  if (entry && entry.expiry > now) {
+    return entry.value;
+  }
+
+  const result = compute();
+  memoMap.set(key, { value: result, expiry: now + ttl });
+  
+  if (memoMap.size > 100) {
+    const firstKey = memoMap.keys().next().value;
+    memoMap.delete(firstKey);
+  }
+
+  return result;
 }
 
-export const logger = {
-  config: { maxSize: 1024 * 512, logFile: 'dev-toolkit-91.log' } as LogConfig,
-  
-  rotate: () => {
-    if (fs.existsSync(logger.config.logFile) && fs.statSync(logger.config.logFile).size > logger.config.maxSize) {
-      const timestamp = Date.now();
-      fs.renameSync(logger.config.logFile, `${logger.config.logFile}.${timestamp}.bak`);
+export function batchUpdateProcess<T>(items: T[], processor: (batch: T[]) => void, chunkSize: number = 10): void {
+  let index = 0;
+  const nextTick = () => {
+    const batch = items.slice(index, index + chunkSize);
+    if (batch.length > 0) {
+      processor(batch);
+      index += chunkSize;
+      setImmediate(nextTick);
     }
-  },
-
-  log: (message: string) => {
-    logger.rotate();
-    const entry = `[${new Date().toISOString()}] [DEV-TOOLKIT-91] ${message}\n`;
-    fs.appendFileSync(logger.config.logFile, entry);
-  }
-};
-
-export class LogStream {
-  constructor(private prefix: string) {}
-  
-  debug(msg: string) {
-    logger.log(`${this.prefix.toUpperCase()} | DEBUG | ${msg}`);
-  }
-
-  error(msg: string) {
-    logger.log(`${this.prefix.toUpperCase()} | ERROR | ${msg}`);
-  }
+  };
+  nextTick();
 }
