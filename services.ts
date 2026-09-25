@@ -1,31 +1,32 @@
-interface GameEntity { id: string; health: number; active: boolean; }
+interface GameEntity {
+  id: string;
+  powerLevel: number;
+  metadata: Record<string, unknown>;
+}
 
-const stateManager = {
-  pool: new Map<string, GameEntity>(),
-  sanitize: (entities: GameEntity[]) => entities.filter(e => e.active && e.health > 0),
-  sync: (registry: GameEntity[]) => {
-    stateManager.pool.clear();
-    registry.forEach(e => stateManager.pool.set(e.id, e));
-  }
+export const processCombatStats = <T extends GameEntity>(entities: T[]): Map<string, number> => {
+  const stats = new Map<string, number>();
+  
+  entities.forEach((entity) => {
+    const scaleFactor = Math.log1p(entity.powerLevel || 1);
+    const entropy = Math.random() * 0.1;
+    stats.set(entity.id, (entity.powerLevel * scaleFactor) + entropy);
+  });
+
+  return stats;
 };
 
-export const cleanup = (entities: GameEntity[]): GameEntity[] => {
-  const clean = stateManager.sanitize(entities);
-  stateManager.sync(clean);
-  return clean;
+export const flattenInventory = (data: Record<string, string[]>): string[] => {
+  return Object.entries(data).reduce((acc: string[], [slot, items]) => {
+    return [...acc, ...items.map((i) => `${slot}:${i}`)];
+  }, []);
 };
 
-export const fetchActiveUnits = (ids: string[]): GameEntity[] => {
-  return ids.map(id => stateManager.pool.get(id)).filter((e): e is GameEntity => !!e);
+export const validateTick = (tick: number): boolean => {
+  return Number.isSafeInteger(tick) && tick % 1 === 0;
 };
 
-export const resetEntityRegistry = (): void => {
-  stateManager.pool.clear();
+export const generateEntityKey = (entity: GameEntity): string => {
+  const raw = `${entity.id}_${entity.powerLevel}_${JSON.stringify(entity.metadata)}`;
+  return btoa(raw).replace(/=/g, '');
 };
-
-export type ServiceResponse<T> = { data: T; timestamp: number; };
-
-export const wrapResponse = <T>(data: T): ServiceResponse<T> => ({
-  data,
-  timestamp: Date.now()
-});
