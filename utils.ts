@@ -1,35 +1,39 @@
-type CacheEntry<T> = { value: T; expiry: number };
+export type RetryableTask<T> = () => Promise<T>;
 
-const memoMap = new Map<string, CacheEntry<any>>();
-
-export function memoizeHeavyCompute<T>(key: string, compute: () => T, ttl: number = 5000): T {
-  const now = Date.now();
-  const entry = memoMap.get(key);
-
-  if (entry && entry.expiry > now) {
-    return entry.value;
-  }
-
-  const result = compute();
-  memoMap.set(key, { value: result, expiry: now + ttl });
-  
-  if (memoMap.size > 100) {
-    const firstKey = memoMap.keys().next().value;
-    memoMap.delete(firstKey);
-  }
-
-  return result;
+interface RetryOptions {
+  attempts: number;
+  delayMs: number;
+  backoffFactor: number;
 }
 
-export function batchUpdateProcess<T>(items: T[], processor: (batch: T[]) => void, chunkSize: number = 10): void {
-  let index = 0;
-  const nextTick = () => {
-    const batch = items.slice(index, index + chunkSize);
-    if (batch.length > 0) {
-      processor(batch);
-      index += chunkSize;
-      setImmediate(nextTick);
+export const withExponentialRetry = async <T>(
+  task: RetryableTask<T>,
+  options: RetryOptions = { attempts: 3, delayMs: 500, backoffFactor: 2 }
+): Promise<T> => {
+  let lastError: unknown;
+  let currentDelay = options.delayMs;
+
+  for (let i = 0; i < options.attempts; i++) {
+    try {
+      return await task();
+    } catch (err) {
+      lastError = err;
+      if (i === options.attempts - 1) break;
+      
+      await new Promise((resolve) => setTimeout(resolve, currentDelay));
+      currentDelay *= options.backoffFactor;
     }
-  };
-  nextTick();
-}
+  }
+
+  throw new Error(`Task failed after ${options.attempts} attempts: ${lastError}`);
+};
+
+export const fetchWithGamingHeaders = async (url: string): Promise<Response> => {
+  return withExponentialRetry(async () => {
+    const response = await fetch(url, {
+      headers: { 'X-Dev-Toolkit-Version': '91', 'X-Gaming-Platform': 'web' }
+    });
+    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+    return response;
+  });
+};
