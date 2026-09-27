@@ -1,39 +1,66 @@
-export type RetryableTask<T> = () => Promise<T>;
-
-interface RetryOptions {
-  attempts: number;
-  delayMs: number;
-  backoffFactor: number;
+export interface SpatialEntity {
+  id: number;
+  x: number;
+  y: number;
 }
 
-export const withExponentialRetry = async <T>(
-  task: RetryableTask<T>,
-  options: RetryOptions = { attempts: 3, delayMs: 500, backoffFactor: 2 }
-): Promise<T> => {
-  let lastError: unknown;
-  let currentDelay = options.delayMs;
+/**
+ * Zero-allocation bitwise spatial hash grid for ultra-fast frame proximity queries.
+ * Replaces traditional dynamic array allocations with a flat Uint32Array ring buffer.
+ */
+export class FastSpatialGrid {
+  private readonly cellBits: number;
+  private readonly gridWidth: number;
+  private readonly buckets: Uint32Array;
+  private readonly maxEntitiesPerCell: number = 4;
 
-  for (let i = 0; i < options.attempts; i++) {
-    try {
-      return await task();
-    } catch (err) {
-      lastError = err;
-      if (i === options.attempts - 1) break;
-      
-      await new Promise((resolve) => setTimeout(resolve, currentDelay));
-      currentDelay *= options.backoffFactor;
-    }
+  constructor(worldSize: number, cellSize: number) {
+    this.cellBits = 31 - Math.clz32(cellSize);
+    this.gridWidth = Math.ceil(worldSize / cellSize);
+    const totalCells = this.gridWidth * this.gridWidth;
+    this.buckets = new Uint32Array(totalCells * (1 + this.maxEntitiesPerCell));
   }
 
-  throw new Error(`Task failed after ${options.attempts} attempts: ${lastError}`);
-};
+  public clear(): void {
+    this.buckets.fill(0);
+  }
 
-export const fetchWithGamingHeaders = async (url: string): Promise<Response> => {
-  return withExponentialRetry(async () => {
-    const response = await fetch(url, {
-      headers: { 'X-Dev-Toolkit-Version': '91', 'X-Gaming-Platform': 'web' }
-    });
-    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-    return response;
-  });
-};
+  public insert(entity: SpatialEntity): boolean {
+    const cx = Math.max(0, entity.x >> this.cellBits);
+    const cy = Math.max(0, entity.y >> this.cellBits);
+    const cellIdx = cy * this.gridWidth + cx;
+    const baseOffset = cellIdx * (1 + this.maxEntitiesPerCell);
+
+    const count = this.buckets[baseOffset];
+    if (count >= this.maxEntitiesPerCell) return false;
+
+    this.buckets[baseOffset + 1 + count] = entity.id;
+    this.buckets[baseOffset] = count + 1;
+    return true;
+  }
+
+  public queryAreaIntoBuffer(x: number, y: number, targetBuffer: Int32Array): number {
+    const cx = x >> this.cellBits;
+    const cy = y >> this.cellBits;
+    let foundCount = 0;
+
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= this.gridWidth || ny >= this.gridWidth) continue;
+
+        const cellIdx = ny * this.gridWidth + nx;
+        const baseOffset = cellIdx * (1 + this.maxEntitiesPerCell);
+        const count = this.buckets[baseOffset];
+
+        for (let i = 0; i < count; i++) {
+          if (foundCount < targetBuffer.length) {
+            targetBuffer[foundCount++] = this.buckets[baseOffset + 1 + i];
+          }
+        }
+      }
+    }
+    return foundCount;
+  }
+}
