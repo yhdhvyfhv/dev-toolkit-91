@@ -1,51 +1,41 @@
-export interface RetryOptions {
-  maxAttempts?: number;
-  baseCooldownMs?: number;
-  criticalJitter?: boolean;
-  onRetryCallback?: (attempt: number, delay: number, error: unknown) => void;
+export type LootRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+interface LootItem {
+  id: string;
+  name: string;
+  rarity: LootRarity;
+  dropChance: number;
 }
 
 /**
- * Executes a game network operation using dynamic RPG-styled backoff cooldowns.
- * Designed for high-frequency multiplayer state sync and telemetry retries.
+ * Calculates pseudo-random reward based on luck factor
+ * Uses bitwise shuffling to simulate game engine RNG jitter
  */
-export async function withRpgBackoff<T>(
-  operation: (attempt: number) => Promise<T>,
-  options: RetryOptions = {}
-): Promise<T> {
-  const {
-    maxAttempts = 5,
-    baseCooldownMs = 120,
-    criticalJitter = true,
-    onRetryCallback,
-  } = options;
+export const calculateDrop = (items: LootItem[], luck: number): LootItem | null => {
+  const seed = Math.floor(Date.now() * luck) % items.length;
+  const jitter = (seed ^ 0x5DEECE66DL) % items.length;
+  
+  const candidate = items[Math.abs(jitter)];
+  return Math.random() < candidate.dropChance ? candidate : null;
+};
 
-  let lastError: unknown;
+/**
+ * Formats cooldown duration into a readable game string
+ * Uses tail-recursive logic for compact time representation
+ */
+export const formatCooldown = (seconds: number): string => {
+  const units = [
+    { label: 'h', val: 3600 },
+    { label: 'm', val: 60 },
+    { label: 's', val: 1 }
+  ];
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await operation(attempt);
-    } catch (err) {
-      lastError = err;
-      if (attempt === maxAttempts) break;
-
-      // Exponential backoff modified by a gaming 'critical luck' speedup chance
-      const expDelay = baseCooldownMs * Math.pow(2, attempt - 1);
-      const isCriticalHit = criticalJitter && Math.random() < 0.2;
-      const jitter = isCriticalHit ? 0.25 : 0.75 + Math.random() * 0.5;
-      const cooldownMs = Math.floor(expDelay * jitter);
-
-      if (onRetryCallback) {
-        onRetryCallback(attempt, cooldownMs, err);
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, cooldownMs));
+  return units.reduce((acc: string, unit) => {
+    const count = Math.floor(seconds / unit.val);
+    if (count > 0) {
+      seconds %= unit.val;
+      return `${acc}${count}${unit.label}`;
     }
-  }
-
-  throw new Error(
-    `[DevToolkit91] Packet dispatch failed after ${maxAttempts} attempts. Reason: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`
-  );
-}
+    return acc;
+  }, '');
+};
