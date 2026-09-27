@@ -1,58 +1,31 @@
-export interface LootItem {
-  id: string;
-  weight: number;
-}
+export type GameEntity = { id: string; hp: number; active: boolean };
 
-export class PityLootService {
-  private pityCounters: Map<string, number> = new Map();
+export const calculateCrit = (damage: number, chance: number): number => 
+  Math.random() < chance ? damage * 2 : damage;
 
-  constructor(
-    private lootTable: LootItem[],
-    private legendaryId: string,
-    private pityThreshold: number = 50
-  ) {}
+export const batchUpdate = <T>(items: T[], predicate: (item: T) => boolean, update: Partial<T>): T[] =>
+  items.map(item => predicate(item) ? { ...item, ...update } : item);
 
-  public roll(playerId: string): LootItem {
-    const currentPity = this.pityCounters.get(playerId) || 0;
-    const isPityTriggered = currentPity >= this.pityThreshold;
+export const spawnQueue = <T>(source: T[], count: number): [T[], T[]] => [
+  source.slice(0, count),
+  source.slice(count)
+];
 
-    // Proxy wraps the array to intercept element access and dynamically boost legendary odds
-    const dynamicTable = new Proxy(this.lootTable, {
-      get: (target, prop) => {
-        if (typeof prop === 'string' && !isNaN(Number(prop))) {
-          const index = Number(prop);
-          const item = target[index];
-          if (!item) return undefined;
-          
-          if (item.id === this.legendaryId) {
-            const boost = isPityTriggered ? 10000 : Math.pow(currentPity, 1.8);
-            return { ...item, weight: item.weight + boost };
-          }
-          return item;
-        }
-        return Reflect.get(target, prop);
-      }
-    });
+export const debounceTask = (fn: Function, delay: number) => {
+  let timeout: ReturnType<typeof setTimeout>;
+  return (...args: any[]) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), delay);
+  };
+};
 
-    const totalWeight = dynamicTable.reduce((sum, item) => sum + item.weight, 0);
-    let roll = Math.random() * totalWeight;
-
-    for (const item of dynamicTable) {
-      roll -= item.weight;
-      if (roll <= 0) {
-        if (item.id === this.legendaryId) {
-          this.pityCounters.set(playerId, 0);
-        } else {
-          this.pityCounters.set(playerId, currentPity + 1);
-        }
-        return item;
-      }
+export const throttleEngine = (fn: Function, limit: number) => {
+  let lastRun = 0;
+  return (...args: any[]) => {
+    const now = Date.now();
+    if (now - lastRun >= limit) {
+      fn(...args);
+      lastRun = now;
     }
-
-    return this.lootTable[0];
-  }
-
-  public getPityCount(playerId: string): number {
-    return this.pityCounters.get(playerId) || 0;
-  }
-}
+  };
+};
