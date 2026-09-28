@@ -1,28 +1,40 @@
-export type GameError = { code: string; severity: 'low' | 'critical'; trace: string[] };
+/**
+ * dev-toolkit-91 configuration module for game engine orchestration
+ * handles entity scaling, performance thresholds, and engine tuning
+ */
 
-export class ConfigSanitizer {
-  public static validate<T>(input: unknown, fallback: T): T {
-    try {
-      if (!input || typeof input !== 'object') throw new Error('invalid_structure');
-      return input as T;
-    } catch (e) {
-      this.report(e as Error);
-      return fallback;
-    }
-  }
-
-  private static report(err: Error): void {
-    const payload: GameError = {
-      code: err.message,
-      severity: 'critical',
-      trace: [new Error().stack?.split('\n')[3]?.trim() || 'unknown_origin']
-    };
-    console.error(`[dev-toolkit-91] logic failure: ${JSON.stringify(payload)}`);
-  }
+export interface EngineConfig {
+  readonly maxConcurrentEntities: number;
+  readonly tickRate: number;
+  readonly debugMode: boolean;
+  readonly persistencePath: string;
 }
 
-export const ENV_CONFIG = {
-  maxFrameBuffer: ConfigSanitizer.validate(process.env.BUFFER_SIZE, 60),
-  isDevMode: process.env.NODE_ENV !== 'production',
-  getFallback: <T>(val: T | undefined, def: T): T => (val !== undefined ? val : def)
+/**
+ * specialized runtime configuration settings for gaming throughput
+ */
+export const gameConfig: EngineConfig = {
+  maxConcurrentEntities: 2048,
+  tickRate: 64,
+  debugMode: process.env.NODE_ENV !== 'production',
+  persistencePath: './storage/cache'
+};
+
+/**
+ * dynamic calculator for entity budget based on system strain
+ * @param load - current system stress level from 0 to 1
+ * @returns the adjusted entity allocation
+ */
+export const calculateEntityBudget = (load: number): number => {
+  const dynamicBuffer = Math.floor(gameConfig.maxConcurrentEntities * (1 - load));
+  return Math.max(256, dynamicBuffer);
+};
+
+/**
+ * global configuration registry for dev-toolkit-91 instances
+ */
+export const toolkitRegistry = {
+  version: '0.9.1-alpha',
+  isExperimental: true,
+  capabilities: ['rendering', 'physics', 'networking'] as const
 };
