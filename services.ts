@@ -1,31 +1,40 @@
-export type GameEntity = { id: string; hp: number; active: boolean };
+import * as fs from 'fs';
+import * as path from 'path';
 
-export const calculateCrit = (damage: number, chance: number): number => 
-  Math.random() < chance ? damage * 2 : damage;
+interface LogConfig {
+  maxSize: number;
+  logDir: string;
+}
 
-export const batchUpdate = <T>(items: T[], predicate: (item: T) => boolean, update: Partial<T>): T[] =>
-  items.map(item => predicate(item) ? { ...item, ...update } : item);
+export class GameLogger {
+  private path: string;
+  constructor(private config: LogConfig) {
+    this.path = path.join(config.logDir, 'dev-toolkit.log');
+    if (!fs.existsSync(config.logDir)) fs.mkdirSync(config.logDir, { recursive: true });
+  }
 
-export const spawnQueue = <T>(source: T[], count: number): [T[], T[]] => [
-  source.slice(0, count),
-  source.slice(count)
-];
-
-export const debounceTask = (fn: Function, delay: number) => {
-  let timeout: ReturnType<typeof setTimeout>;
-  return (...args: any[]) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => fn(...args), delay);
-  };
-};
-
-export const throttleEngine = (fn: Function, limit: number) => {
-  let lastRun = 0;
-  return (...args: any[]) => {
-    const now = Date.now();
-    if (now - lastRun >= limit) {
-      fn(...args);
-      lastRun = now;
+  private rotate(): void {
+    const backup = `${this.path}.old`;
+    if (fs.existsSync(this.path)) {
+      fs.renameSync(this.path, backup);
     }
-  };
-};
+  }
+
+  public log(message: string): void {
+    const entry = `[${new Date().toISOString()}] [DEV-TOOLKIT-91] ${message}\n`;
+    try {
+      const stats = fs.existsSync(this.path) ? fs.statSync(this.path) : null;
+      if (stats && stats.size > this.config.maxSize) {
+        this.rotate();
+      }
+      fs.appendFileSync(this.path, entry);
+    } catch (e) {
+      console.error('logger filesystem failure', e);
+    }
+  }
+}
+
+export const toolkitLogger = new GameLogger({
+  maxSize: 1024 * 1024 * 5,
+  logDir: './logs'
+});
