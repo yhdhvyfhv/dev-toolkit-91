@@ -1,66 +1,69 @@
-export interface SpatialEntity {
+export interface Entity2D {
   id: number;
   x: number;
   y: number;
+  radius: number;
 }
 
 /**
- * Zero-allocation bitwise spatial hash grid for ultra-fast frame proximity queries.
- * Replaces traditional dynamic array allocations with a flat Uint32Array ring buffer.
+ * Flat Uint32Array spatial hash grid designed to eliminate GC pressure
+ * during 60 FPS entity proximity lookups in the game core loop.
  */
-export class FastSpatialGrid {
-  private readonly cellBits: number;
-  private readonly gridWidth: number;
-  private readonly buckets: Uint32Array;
-  private readonly maxEntitiesPerCell: number = 4;
+export class SpatialGridOptimizer {
+  private readonly cellSize: number;
+  private readonly widthBuckets: number;
+  private readonly heightBuckets: number;
+  private readonly grid: Uint32Array;
+  private readonly maxPerCell: number;
 
-  constructor(worldSize: number, cellSize: number) {
-    this.cellBits = 31 - Math.clz32(cellSize);
-    this.gridWidth = Math.ceil(worldSize / cellSize);
-    const totalCells = this.gridWidth * this.gridWidth;
-    this.buckets = new Uint32Array(totalCells * (1 + this.maxEntitiesPerCell));
+  constructor(worldWidth: number, worldHeight: number, cellSize: number, maxPerCell = 16) {
+    this.cellSize = cellSize;
+    this.widthBuckets = Math.ceil(worldWidth / cellSize);
+    this.heightBuckets = Math.ceil(worldHeight / cellSize);
+    this.maxPerCell = maxPerCell;
+    this.grid = new Uint32Array(this.widthBuckets * this.heightBuckets * (maxPerCell + 1));
   }
 
   public clear(): void {
-    this.buckets.fill(0);
+    this.grid.fill(0);
   }
 
-  public insert(entity: SpatialEntity): boolean {
-    const cx = Math.max(0, entity.x >> this.cellBits);
-    const cy = Math.max(0, entity.y >> this.cellBits);
-    const cellIdx = cy * this.gridWidth + cx;
-    const baseOffset = cellIdx * (1 + this.maxEntitiesPerCell);
+  public insert(entity: Entity2D): void {
+    const cellX = (entity.x / this.cellSize) | 0;
+    const cellY = (entity.y / this.cellSize) | 0;
+    if (cellX < 0 || cellX >= this.widthBuckets || cellY < 0 || cellY >= this.heightBuckets) return;
 
-    const count = this.buckets[baseOffset];
-    if (count >= this.maxEntitiesPerCell) return false;
+    const baseIndex = (cellY * this.widthBuckets + cellX) * (this.maxPerCell + 1);
+    const count = this.grid[baseIndex];
 
-    this.buckets[baseOffset + 1 + count] = entity.id;
-    this.buckets[baseOffset] = count + 1;
-    return true;
+    if (count < this.maxPerCell) {
+      this.grid[baseIndex + 1 + count] = entity.id;
+      this.grid[baseIndex] = count + 1;
+    }
   }
 
-  public queryAreaIntoBuffer(x: number, y: number, targetBuffer: Int32Array): number {
-    const cx = x >> this.cellBits;
-    const cy = y >> this.cellBits;
-    let foundCount = 0;
+  public queryNearby(x: number, y: number, buffer: Uint32Array): number {
+    const cx = (x / this.cellSize) | 0;
+    const cy = (y / this.cellSize) | 0;
+    let wrote = 0;
 
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const nx = cx + dx;
-        const ny = cy + dy;
-        if (nx < 0 || ny < 0 || nx >= this.gridWidth || ny >= this.gridWidth) continue;
+    for (let dy = -1; dy <= 1; dy++) {
+      const targetY = cy + dy;
+      if (targetY < 0 || targetY >= this.heightBuckets) continue;
 
-        const cellIdx = ny * this.gridWidth + nx;
-        const baseOffset = cellIdx * (1 + this.maxEntitiesPerCell);
-        const count = this.buckets[baseOffset];
+      for (let dx = -1; dx <= 1; dx++) {
+        const targetX = cx + dx;
+        if (targetX < 0 || targetX >= this.widthBuckets) continue;
 
-        for (let i = 0; i < count; i++) {
-          if (foundCount < targetBuffer.length) {
-            targetBuffer[foundCount++] = this.buckets[baseOffset + 1 + i];
-          }
+        const baseIndex = (targetY * this.widthBuckets + targetX) * (this.maxPerCell + 1);
+        const count = this.grid[baseIndex];
+
+        for (let i = 0; i < count && wrote < buffer.length; i++) {
+          buffer[wrote++] = this.grid[baseIndex + 1 + i];
         }
       }
     }
-    return foundCount;
+
+    return wrote;
   }
 }
