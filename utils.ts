@@ -1,69 +1,49 @@
-export interface Entity2D {
-  id: number;
-  x: number;
-  y: number;
-  radius: number;
+export interface RetryOptions {
+  maxAttempts: number;
+  baseDelayMs: number;
+  backoffFactor: number;
+  onRetry?: (error: unknown, attempt: number, nextDelayMs: number) => void;
 }
 
 /**
- * Flat Uint32Array spatial hash grid designed to eliminate GC pressure
- * during 60 FPS entity proximity lookups in the game core loop.
+ * Executes an operation with a 'respawn' cooldown (exponential backoff with jitter).
+ * Tailored for multiplayer latency spikes where randomized pauses prevent server thundering herds.
  */
-export class SpatialGridOptimizer {
-  private readonly cellSize: number;
-  private readonly widthBuckets: number;
-  private readonly heightBuckets: number;
-  private readonly grid: Uint32Array;
-  private readonly maxPerCell: number;
+export async function retryWithCooldown<T>(
+  operation: () => Promise<T>,
+  options: Partial<RetryOptions> = {}
+): Promise<T> {
+  const {
+    maxAttempts = 3,
+    baseDelayMs = 500,
+    backoffFactor = 2,
+    onRetry,
+  } = options;
 
-  constructor(worldWidth: number, worldHeight: number, cellSize: number, maxPerCell = 16) {
-    this.cellSize = cellSize;
-    this.widthBuckets = Math.ceil(worldWidth / cellSize);
-    this.heightBuckets = Math.ceil(worldHeight / cellSize);
-    this.maxPerCell = maxPerCell;
-    this.grid = new Uint32Array(this.widthBuckets * this.heightBuckets * (maxPerCell + 1));
-  }
+  let attempt = 0;
 
-  public clear(): void {
-    this.grid.fill(0);
-  }
-
-  public insert(entity: Entity2D): void {
-    const cellX = (entity.x / this.cellSize) | 0;
-    const cellY = (entity.y / this.cellSize) | 0;
-    if (cellX < 0 || cellX >= this.widthBuckets || cellY < 0 || cellY >= this.heightBuckets) return;
-
-    const baseIndex = (cellY * this.widthBuckets + cellX) * (this.maxPerCell + 1);
-    const count = this.grid[baseIndex];
-
-    if (count < this.maxPerCell) {
-      this.grid[baseIndex + 1 + count] = entity.id;
-      this.grid[baseIndex] = count + 1;
-    }
-  }
-
-  public queryNearby(x: number, y: number, buffer: Uint32Array): number {
-    const cx = (x / this.cellSize) | 0;
-    const cy = (y / this.cellSize) | 0;
-    let wrote = 0;
-
-    for (let dy = -1; dy <= 1; dy++) {
-      const targetY = cy + dy;
-      if (targetY < 0 || targetY >= this.heightBuckets) continue;
-
-      for (let dx = -1; dx <= 1; dx++) {
-        const targetX = cx + dx;
-        if (targetX < 0 || targetX >= this.widthBuckets) continue;
-
-        const baseIndex = (targetY * this.widthBuckets + targetX) * (this.maxPerCell + 1);
-        const count = this.grid[baseIndex];
-
-        for (let i = 0; i < count && wrote < buffer.length; i++) {
-          buffer[wrote++] = this.grid[baseIndex + 1 + i];
-        }
+  while (attempt < maxAttempts) {
+    try {
+      return await operation();
+    } catch (error) {
+      attempt++;
+      if (attempt >= maxAttempts) {
+        throw error;
       }
-    }
 
-    return wrote;
+      // Generate tactical jitter to smooth out synchronized reconnection attempts
+      const tacticalJitter = Math.random() * 0.3 + 0.85; 
+      const delay = Math.round(
+        baseDelayMs * Math.pow(backoffFactor, attempt - 1) * tacticalJitter
+      );
+
+      if (onRetry) {
+        onRetry(error, attempt, delay);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
   }
+
+  throw new Error("unreachable state during retry backoff");
 }
