@@ -1,36 +1,46 @@
-export type Frame = number;
-export type BufferKey = string | number;
+export type GameTick = number;
 
-export class ObjectPool<T> {
-  private pool: T[] = [];
-  constructor(private factory: () => T) {}
-  acquire(): T {
-    return this.pool.pop() ?? this.factory();
-  }
-  release(item: T): void {
-    if (this.pool.length < 1000) this.pool.push(item);
-  }
+export interface PerformanceBuffer<T> {
+  data: T[];
+  capacity: number;
+  cursor: number;
+  push: (val: T) => void;
+  flush: () => T[];
 }
 
-export interface MemorySlice {
-  readonly buffer: ArrayBuffer;
-  readonly offset: number;
-  readonly length: number;
-}
-
-export type EngineState = {
-  tick: Frame;
-  cache: Map<BufferKey, Float32Array>;
-  clean(): void;
-};
-
-export const createGameState = (capacity: number): EngineState => ({
-  tick: 0,
-  cache: new Map(),
-  clean() {
-    if (this.tick % 60 === 0) {
-      this.cache.clear();
-    }
-    this.tick++;
+export const createRingBuffer = <T>(capacity: number): PerformanceBuffer<T> => ({
+  data: new Array(capacity),
+  capacity,
+  cursor: 0,
+  push(val: T) {
+    this.data[this.cursor] = val;
+    this.cursor = (this.cursor + 1) % this.capacity;
+  },
+  flush() {
+    const snapshot = [...this.data.filter(Boolean)];
+    this.cursor = 0;
+    this.data.fill(undefined as any);
+    return snapshot;
   }
 });
+
+export type EngineMetrics = {
+  fps: number;
+  latency: number;
+  memoryDelta: number;
+};
+
+export class MemoizedRegistry {
+  private cache = new Map<string, unknown>();
+  
+  public get<T>(key: string, producer: () => T): T {
+    if (!this.cache.has(key)) {
+      this.cache.set(key, producer());
+    }
+    return this.cache.get(key) as T;
+  }
+
+  public clear(): void {
+    this.cache.clear();
+  }
+}
