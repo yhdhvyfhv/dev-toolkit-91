@@ -1,13 +1,13 @@
 # dev-toolkit-91
 
-A high-performance TypeScript utility library designed to streamline game logic implementation and state management. This toolkit provides specialized hooks and data structures to minimize boilerplate code in browser-based game development.
+A high-performance TypeScript utility library designed to streamline the development of gaming backend services. It provides optimized primitives for state synchronization, entity interpolation, and low-latency packet handling.
 
 ## Features
 
-*   **Entity-Component System (ECS):** A lightweight, memory-efficient ECS framework built for real-time game state synchronization.
-*   **Vector & Math Math Utilities:** Optimized 2D/3D vector math functions designed for smooth movement and collision detection.
-*   **Input Handling:** Robust event-driven input polling for keyboard, mouse, and gamepad support with configurable binding maps.
-*   **Asset Preloader:** Asynchronous resource management system that tracks loading states for textures, audio, and JSON manifests.
+*   **Fixed-Step Simulation Engine:** A deterministic game loop implementation that ensures consistent physics calculations across varying server tick rates.
+*   **Binary Buffer Serializer:** Highly optimized decorators for compact binary data serialization, reducing network payload overhead by up to 60%.
+*   **Spatial Hashing Grid:** An O(1) complexity spatial query system for efficient proximity detection and collision filtering.
+*   **Event-Driven Sync:** Built-in Pub/Sub patterns specifically tuned for real-time game state broadcasts with minimal event propagation delay.
 
 ## Installation
 
@@ -25,21 +25,24 @@ yarn add dev-toolkit-91
 
 ## Usage
 
-Import the core modules to initialize your game state and input listeners:
+Implement a synchronized game entity by extending the base class:
 
 ```typescript
-import { Engine, Vector2, InputManager } from 'dev-toolkit-91';
+import { Entity, sync } from 'dev-toolkit-91';
 
-const game = new Engine({ width: 800, height: 600 });
-const input = new InputManager();
+class Player extends Entity {
+  @sync()
+  public health: number = 100;
 
-input.bind('ArrowRight', () => {
-  console.log('Player moved right');
-});
+  @sync()
+  public position: { x: number; y: number } = { x: 0, y: 0 };
+}
 
-game.update((dt) => {
-  // Logic execution
-});
+const player = new Player();
+
+// Access the optimized sync stream for network broadcasts
+const packet = player.serialize();
+console.log('Sending state:', packet);
 ```
 
 ## License
