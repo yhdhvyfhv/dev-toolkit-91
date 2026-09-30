@@ -1,28 +1,34 @@
-export type GameEntity = { id: string; health: number; pos: [number, number] };
+type GameError = { code: string; recovery: () => void; metadata: Record<string, unknown> };
 
-export const lerp = (start: number, end: number, alpha: number): number =>
-  start + (end - start) * Math.max(0, Math.min(1, alpha));
+const silentRecovery = () => console.warn('glitch detected, suppressing...');
 
-export const throttle = <T extends (...args: any[]) => any>(fn: T, limit: number) => {
-  let lastRun = 0;
-  return (...args: Parameters<T>): ReturnType<T> | void => {
-    const now = Date.now();
-    if (now - lastRun >= limit) {
-      lastRun = now;
-      return fn(...args);
-    }
-  };
+export const catchEdgeCase = <T>(fn: () => T, fallback: T): T => {
+  try {
+    return fn();
+  } catch (err) {
+    const errorReport: GameError = {
+      code: 'ERR_GAMELOOP_COLLAPSE',
+      recovery: silentRecovery,
+      metadata: { original: String(err), timestamp: Date.now() }
+    };
+    errorReport.recovery();
+    return fallback;
+  }
 };
 
-export const normalizeVector = (x: number, y: number): [number, number] => {
-  const mag = Math.hypot(x, y);
-  return mag > 0 ? [x / mag, y / mag] : [0, 0];
+export const assertEntityState = <T>(state: T | null | undefined, fallback: T): T => {
+  if (state === null || state === undefined) {
+    console.error('entity null reference, rolling back');
+    return fallback;
+  }
+  return state;
 };
 
-export const collisionBox = (a: GameEntity, b: GameEntity, size: number): boolean =>
-  Math.abs(a.pos[0] - b.pos[0]) < size && Math.abs(a.pos[1] - b.pos[1]) < size;
-
-export const sanitizeInput = (input: string): string =>
-  input.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
-
-export const deepClone = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
+export const safelyExecute = async <T>(task: Promise<T>, timeoutMs: number): Promise<T | null> => {
+  const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs));
+  try {
+    return await Promise.race([task, timeout]);
+  } catch {
+    return null;
+  }
+};
