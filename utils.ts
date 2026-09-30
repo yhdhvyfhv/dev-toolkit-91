@@ -1,49 +1,39 @@
-export interface RetryOptions {
-  maxAttempts: number;
-  baseDelayMs: number;
-  backoffFactor: number;
-  onRetry?: (error: unknown, attempt: number, nextDelayMs: number) => void;
-}
+const memoize = <T, R>(fn: (arg: T) => R): (arg: T) => R => {
+  const cache = new Map<T, R>();
+  return (arg: T) => {
+    if (cache.has(arg)) return cache.get(arg)!;
+    const result = fn(arg);
+    cache.set(arg, result);
+    return result;
+  };
+};
 
-/**
- * Executes an operation with a 'respawn' cooldown (exponential backoff with jitter).
- * Tailored for multiplayer latency spikes where randomized pauses prevent server thundering herds.
- */
-export async function retryWithCooldown<T>(
-  operation: () => Promise<T>,
-  options: Partial<RetryOptions> = {}
-): Promise<T> {
-  const {
-    maxAttempts = 3,
-    baseDelayMs = 500,
-    backoffFactor = 2,
-    onRetry,
-  } = options;
+export const batchProcess = <T>(items: T[], chunkSize: number = 64): T[][] => {
+  return Array.from({ length: Math.ceil(items.length / chunkSize) }, (_, i) =>
+    items.slice(i * chunkSize, i * chunkSize + chunkSize)
+  );
+};
 
-  let attempt = 0;
+export const entityHash = memoize((entityId: string): number => {
+  let hash = 0;
+  for (let i = 0; i < entityId.length; i++) {
+    hash = (hash << 5) - hash + entityId.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+});
 
-  while (attempt < maxAttempts) {
-    try {
-      return await operation();
-    } catch (error) {
-      attempt++;
-      if (attempt >= maxAttempts) {
-        throw error;
-      }
+export class PerformanceBuffer {
+  private pool: Float32Array[] = [];
+  constructor(private size: number, private capacity: number) {}
 
-      // Generate tactical jitter to smooth out synchronized reconnection attempts
-      const tacticalJitter = Math.random() * 0.3 + 0.85; 
-      const delay = Math.round(
-        baseDelayMs * Math.pow(backoffFactor, attempt - 1) * tacticalJitter
-      );
-
-      if (onRetry) {
-        onRetry(error, attempt, delay);
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
+  allocate(): Float32Array {
+    return this.pool.pop() || new Float32Array(this.size);
   }
 
-  throw new Error("unreachable state during retry backoff");
+  recycle(buffer: Float32Array): void {
+    if (this.pool.length < this.capacity) {
+      this.pool.push(buffer);
+    }
+  }
 }
