@@ -1,40 +1,35 @@
-/**
- * dev-toolkit-91 configuration module for game engine orchestration
- * handles entity scaling, performance thresholds, and engine tuning
- */
+export type GameError = { code: string; message: string; severity: 'low' | 'high' | 'critical' };
 
-export interface EngineConfig {
-  readonly maxConcurrentEntities: number;
-  readonly tickRate: number;
-  readonly debugMode: boolean;
-  readonly persistencePath: string;
+export class ConfigManager {
+  private static instance: Record<string, unknown> = {};
+
+  public static loadConfig(input: unknown): Record<string, unknown> {
+    try {
+      if (!input || typeof input !== 'object') throw new Error('MALFORMED_CONFIG');
+      this.instance = input as Record<string, unknown>;
+      return this.instance;
+    } catch (e) {
+      this.handleCritical(e as Error);
+      return { status: 'fallback', timestamp: Date.now() };
+    }
+  }
+
+  private static handleCritical(err: Error): void {
+    const payload: GameError = {
+      code: err.message,
+      message: 'system instability detected in dev-toolkit-91',
+      severity: 'critical'
+    };
+    console.error(`[CRITICAL_FAILURE]: ${JSON.stringify(payload)}`);
+  }
+
+  public static get<T>(key: string, fallback: T): T {
+    return (this.instance[key] as T) ?? fallback;
+  }
 }
 
-/**
- * specialized runtime configuration settings for gaming throughput
- */
-export const gameConfig: EngineConfig = {
-  maxConcurrentEntities: 2048,
-  tickRate: 64,
-  debugMode: process.env.NODE_ENV !== 'production',
-  persistencePath: './storage/cache'
-};
-
-/**
- * dynamic calculator for entity budget based on system strain
- * @param load - current system stress level from 0 to 1
- * @returns the adjusted entity allocation
- */
-export const calculateEntityBudget = (load: number): number => {
-  const dynamicBuffer = Math.floor(gameConfig.maxConcurrentEntities * (1 - load));
-  return Math.max(256, dynamicBuffer);
-};
-
-/**
- * global configuration registry for dev-toolkit-91 instances
- */
-export const toolkitRegistry = {
-  version: '0.9.1-alpha',
-  isExperimental: true,
-  capabilities: ['rendering', 'physics', 'networking'] as const
+export const settings = {
+  maxPlayerCount: ConfigManager.get('players', 64),
+  region: ConfigManager.get('region', 'us-east-1'),
+  isExperimental: !!ConfigManager.get('dev_mode', false)
 };
