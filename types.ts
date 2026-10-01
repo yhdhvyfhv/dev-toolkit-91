@@ -1,46 +1,45 @@
-export type GameTick = number;
+export type Vector3D = [number, number, number];
 
-export interface PerformanceBuffer<T> {
-  data: T[];
-  capacity: number;
-  cursor: number;
-  push: (val: T) => void;
-  flush: () => T[];
+export interface EntityState {
+  readonly id: string;
+  position: Vector3D;
+  velocity: Vector3D;
+  health: number;
+  metadata: Record<string, unknown>;
 }
 
-export const createRingBuffer = <T>(capacity: number): PerformanceBuffer<T> => ({
-  data: new Array(capacity),
-  capacity,
-  cursor: 0,
-  push(val: T) {
-    this.data[this.cursor] = val;
-    this.cursor = (this.cursor + 1) % this.capacity;
-  },
-  flush() {
-    const snapshot = [...this.data.filter(Boolean)];
-    this.cursor = 0;
-    this.data.fill(undefined as any);
-    return snapshot;
-  }
-});
+export interface TimelineSnapshot {
+  readonly tick: number;
+  readonly timestamp: number;
+  entities: Map<string, EntityState>;
+}
 
-export type EngineMetrics = {
-  fps: number;
-  latency: number;
-  memoryDelta: number;
+export type ActionPayloadMap = {
+  MOVE: { delta: Vector3D };
+  DAMAGE: { amount: number; sourceId: string };
+  SPAWN: { entityType: string; initialPosition: Vector3D };
+  DESPAWN: { reason: 'dead' | 'cleanup' | 'portal' };
 };
 
-export class MemoizedRegistry {
-  private cache = new Map<string, unknown>();
-  
-  public get<T>(key: string, producer: () => T): T {
-    if (!this.cache.has(key)) {
-      this.cache.set(key, producer());
-    }
-    return this.cache.get(key) as T;
-  }
+export type GameActionType = keyof ActionPayloadMap;
 
-  public clear(): void {
-    this.cache.clear();
-  }
+export interface GameAction<T extends GameActionType = GameActionType> {
+  readonly type: T;
+  readonly payload: ActionPayloadMap[T];
+  readonly tickExecuted: number;
+}
+
+export type Reverter<T extends GameActionType> = (
+  state: EntityState,
+  action: GameAction<T>
+) => EntityState;
+
+export type TimeRewinderRegistry = {
+  [K in GameActionType]: Reverter<K>;
+};
+
+export interface TimelineConfig {
+  maxTicksStored: number;
+  compressionRatio: 0 | 0.25 | 0.5 | 0.75 | 1;
+  interpolation: 'linear' | 'hermite' | 'bezier' | 'teleport';
 }
