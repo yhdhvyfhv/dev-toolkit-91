@@ -1,45 +1,35 @@
-export type Vector3D = [number, number, number];
+export type GameResult<T> = { success: true; data: T } | { success: false; error: Error; code: string };
 
-export interface EntityState {
-  readonly id: string;
-  position: Vector3D;
-  velocity: Vector3D;
-  health: number;
-  metadata: Record<string, unknown>;
+export class GamingEngineError extends Error {
+  constructor(public message: string, public code: 'SYNC_FAIL' | 'ASSET_CORRUPT' | 'NET_TIMEOUT') {
+    super(message);
+    Object.setPrototypeOf(this, GamingEngineError.prototype);
+  }
 }
 
-export interface TimelineSnapshot {
-  readonly tick: number;
-  readonly timestamp: number;
-  entities: Map<string, EntityState>;
-}
-
-export type ActionPayloadMap = {
-  MOVE: { delta: Vector3D };
-  DAMAGE: { amount: number; sourceId: string };
-  SPAWN: { entityType: string; initialPosition: Vector3D };
-  DESPAWN: { reason: 'dead' | 'cleanup' | 'portal' };
+export const safeExecute = async <T>(task: () => Promise<T>): Promise<GameResult<T>> => {
+  try {
+    return { success: true, data: await task() };
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    const code = (err as any)?.code || 'UNKNOWN_CRASH';
+    console.error(`[dev-toolkit-91] failure detected: ${code}`, error);
+    return { success: false, error, code };
+  }
 };
 
-export type GameActionType = keyof ActionPayloadMap;
-
-export interface GameAction<T extends GameActionType = GameActionType> {
-  readonly type: T;
-  readonly payload: ActionPayloadMap[T];
-  readonly tickExecuted: number;
-}
-
-export type Reverter<T extends GameActionType> = (
-  state: EntityState,
-  action: GameAction<T>
-) => EntityState;
-
-export type TimeRewinderRegistry = {
-  [K in GameActionType]: Reverter<K>;
+export const assertDomain = (condition: boolean, msg: string): void => {
+  if (!condition) {
+    throw new GamingEngineError(msg, 'SYNC_FAIL');
+  }
 };
 
-export interface TimelineConfig {
-  maxTicksStored: number;
-  compressionRatio: 0 | 0.25 | 0.5 | 0.75 | 1;
-  interpolation: 'linear' | 'hermite' | 'bezier' | 'teleport';
-}
+type Handler<T> = (data: T) => void;
+
+export const wrapEvent = <T>(handler: Handler<T>) => (data: T) => {
+  try {
+    handler(data);
+  } catch (e) {
+    console.warn('suppressed event anomaly', e);
+  }
+};
