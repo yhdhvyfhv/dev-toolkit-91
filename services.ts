@@ -1,37 +1,31 @@
-export type GameResult<T> = { data: T; error: null } | { data: null; error: string };
+import * as fs from 'fs';
+import * as path from 'path';
 
-const GAMING_ERROR_CODES: Record<string, string> = {
-  'CONN_LOST': 'Your controller connection dropped to the abyss',
-  'ASSET_MISSING': 'The pixels refused to load',
-  'LAG_SPIKE': 'Time has dilated, try reconnecting',
-};
+interface LogConfig {
+  maxSizeBytes: number;
+  logDir: string;
+}
 
-export const safeExecute = async <T>(
-  task: () => Promise<T>,
-  fallback: T
-): Promise<GameResult<T>> => {
-  try {
-    const result = await task();
-    return { data: result, error: null };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown glitch';
-    const friendly = GAMING_ERROR_CODES[message] || 'An unexpected game state occurred';
-    console.warn(`[dev-toolkit-91] ${friendly}`);
-    return { data: fallback, error: friendly };
+export class GameLogger {
+  private path: string;
+  private config: LogConfig = { maxSizeBytes: 1024 * 1024 * 5, logDir: './logs' };
+
+  constructor(filename: string) {
+    if (!fs.existsSync(this.config.logDir)) fs.mkdirSync(this.config.logDir);
+    this.path = path.join(this.config.logDir, filename);
   }
-};
 
-export const fetchGameState = async (id: string): Promise<GameResult<Record<string, any>>> => {
-  return safeExecute(async () => {
-    const response = await fetch(`/api/game/${id}`);
-    if (!response.ok) throw new Error('CONN_LOST');
-    return response.json();
-  }, { status: 'idle', players: [] });
-};
+  private rotate(): void {
+    const backup = `${this.path}.old`;
+    if (fs.existsSync(backup)) fs.unlinkSync(backup);
+    fs.renameSync(this.path, backup);
+  }
 
-export class GlitchBoundary {
-  static handle(err: any): string {
-    const code = String(err).split(':')[0] || 'CRASH_UNKNOWN';
-    return GAMING_ERROR_CODES[code] || 'Game engine kernel panic';
+  public log(message: string): void {
+    const entry = `[${new Date().toISOString()}] ${message}\n`;
+    if (fs.existsSync(this.path) && fs.statSync(this.path).size > this.config.maxSizeBytes) {
+      this.rotate();
+    }
+    fs.appendFileSync(this.path, entry);
   }
 }
