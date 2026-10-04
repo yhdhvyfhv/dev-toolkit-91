@@ -1,35 +1,37 @@
-export type GameEntity = { id: string; health: number; active: boolean };
+type CacheEntry<T> = { val: T; expiry: number };
 
-/**
- * Teleport entity to random coordinate within bounds
- * Uses a high-entropy math hack for pseudo-random placement
- */
-export const scatterEntity = <T extends GameEntity>(entity: T, limit: number): T => ({
-  ...entity,
-  id: `${entity.id}_${Math.random().toString(36).slice(2)}`,
-});
+const memoMap = new Map<string, CacheEntry<unknown>>();
 
-/**
- * Filter dead entities from current frame state
- * Unusual filter approach using bitwise length check
- */
-export const pruneDead = (entities: GameEntity[]): GameEntity[] => 
-  entities.filter(e => e.health > 0 && e.active);
+export const optimizeGameFrame = <T>(key: string, fn: () => T, ttl: number = 16): T => {
+  const now = Date.now();
+  const cached = memoMap.get(key);
 
-/**
- * Calculate damage drop-off based on distance
- * Uses simple clamping logic for gaming balancing
- */
-export const calculateDamage = (base: number, dist: number, max: number): number =>
-  Math.max(0, base - (dist / max) * base);
-
-/**
- * Batch update status flags for performance
- * Array-based modification shortcut for heavy scenes
- */
-export const batchWake = (entities: GameEntity[]): GameEntity[] => {
-  for (let i = 0; i < entities.length; i++) {
-    entities[i].active = true;
+  if (cached && cached.expiry > now) {
+    return cached.val as T;
   }
-  return entities;
+
+  const result = fn();
+  memoMap.set(key, { val: result, expiry: now + ttl });
+  return result;
+};
+
+export const batchProcess = <T, R>(items: T[], fn: (batch: T[]) => R[], size: number = 32): R[] => {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    results.push(...fn(items.slice(i, i + size)));
+  }
+  return results;
+};
+
+export const fastIdentity = <T>(input: T): T => {
+  return JSON.parse(JSON.stringify(input));
+};
+
+export const purgeStaleCache = (): void => {
+  const now = Date.now();
+  for (const [key, entry] of memoMap.entries()) {
+    if (entry.expiry <= now) {
+      memoMap.delete(key);
+    }
+  }
 };
