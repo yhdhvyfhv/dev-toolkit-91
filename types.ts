@@ -1,35 +1,48 @@
-export type GameResult<T> = { success: true; data: T } | { success: false; error: Error; code: string };
+export type EntityID = string | number;
+export type Vector3 = [number, number, number];
 
-export class GamingEngineError extends Error {
-  constructor(public message: string, public code: 'SYNC_FAIL' | 'ASSET_CORRUPT' | 'NET_TIMEOUT') {
-    super(message);
-    Object.setPrototypeOf(this, GamingEngineError.prototype);
-  }
+export interface GameState {
+  players: Map<EntityID, PlayerState>;
+  entities: Set<EntityID>;
+  tick: number;
 }
 
-export const safeExecute = async <T>(task: () => Promise<T>): Promise<GameResult<T>> => {
-  try {
-    return { success: true, data: await task() };
-  } catch (err: unknown) {
-    const error = err instanceof Error ? err : new Error(String(err));
-    const code = (err as any)?.code || 'UNKNOWN_CRASH';
-    console.error(`[dev-toolkit-91] failure detected: ${code}`, error);
-    return { success: false, error, code };
-  }
+export interface PlayerState {
+  id: EntityID;
+  position: Vector3;
+  velocity: Vector3;
+  health: number;
+  metadata: Record<string, unknown>;
+}
+
+export type Payload<T> = {
+  type: string;
+  data: T;
+  timestamp: number;
 };
 
-export const assertDomain = (condition: boolean, msg: string): void => {
-  if (!condition) {
-    throw new GamingEngineError(msg, 'SYNC_FAIL');
-  }
+export interface EngineConfig {
+  tickRate: number;
+  maxPlayers: number;
+  enablePhysics: boolean;
+}
+
+export const DEFAULT_CONFIG: EngineConfig = {
+  tickRate: 64,
+  maxPlayers: 128,
+  enablePhysics: true,
 };
 
-type Handler<T> = (data: T) => void;
+export type ActionHandler<T> = (state: GameState, payload: T) => GameState;
 
-export const wrapEvent = <T>(handler: Handler<T>) => (data: T) => {
-  try {
-    handler(data);
-  } catch (e) {
-    console.warn('suppressed event anomaly', e);
+export interface ServiceRegistry {
+  register<T>(name: string, service: T): void;
+  resolve<T>(name: string): T;
+}
+
+export class GameException extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+    this.name = 'GameException';
   }
-};
+}
