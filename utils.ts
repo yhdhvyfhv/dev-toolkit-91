@@ -1,39 +1,36 @@
-const memoize = <T, R>(fn: (arg: T) => R): (arg: T) => R => {
-  const cache = new Map<T, R>();
-  return (arg: T) => {
-    if (cache.has(arg)) return cache.get(arg)!;
-    const result = fn(arg);
-    cache.set(arg, result);
-    return result;
-  };
-};
+export type RetryableTask<T> = () => Promise<T>;
 
-export const batchProcess = <T>(items: T[], chunkSize: number = 64): T[][] => {
-  return Array.from({ length: Math.ceil(items.length / chunkSize) }, (_, i) =>
-    items.slice(i * chunkSize, i * chunkSize + chunkSize)
-  );
-};
+export interface RetryConfig {
+  attempts: number;
+  delayMs: number;
+  backoffFactor: number;
+}
 
-export const entityHash = memoize((entityId: string): number => {
-  let hash = 0;
-  for (let i = 0; i < entityId.length; i++) {
-    hash = (hash << 5) - hash + entityId.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-});
+export const withRetry = async <T>(
+  task: RetryableTask<T>,
+  config: RetryConfig = { attempts: 3, delayMs: 500, backoffFactor: 2 }
+): Promise<T> => {
+  let lastError: unknown;
+  let currentDelay = config.delayMs;
 
-export class PerformanceBuffer {
-  private pool: Float32Array[] = [];
-  constructor(private size: number, private capacity: number) {}
-
-  allocate(): Float32Array {
-    return this.pool.pop() || new Float32Array(this.size);
-  }
-
-  recycle(buffer: Float32Array): void {
-    if (this.pool.length < this.capacity) {
-      this.pool.push(buffer);
+  for (let i = 0; i < config.attempts; i++) {
+    try {
+      return await task();
+    } catch (err) {
+      lastError = err;
+      if (i < config.attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, currentDelay));
+        currentDelay *= config.backoffFactor;
+      }
     }
   }
-}
+
+  throw lastError instanceof Error 
+    ? new Error(`failed after ${config.attempts} attempts: ${lastError.message}`) 
+    : lastError;
+};
+
+export const wrapNetworkCall = <T>(fn: (...args: any[]) => Promise<T>) => {
+  return (...args: Parameters<typeof fn>): Promise<T> => 
+    withRetry(() => fn(...args));
+};
