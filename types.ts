@@ -1,48 +1,29 @@
-export type EntityID = string | number;
-export type Vector3 = [number, number, number];
+export type InputSchema<T> = { [K in keyof T]: (val: unknown) => val is T[K] };
 
-export interface GameState {
-  players: Map<EntityID, PlayerState>;
-  entities: Set<EntityID>;
-  tick: number;
-}
-
-export interface PlayerState {
-  id: EntityID;
-  position: Vector3;
-  velocity: Vector3;
-  health: number;
-  metadata: Record<string, unknown>;
-}
-
-export type Payload<T> = {
-  type: string;
-  data: T;
+export interface GameInput {
+  action: 'jump' | 'shoot' | 'move';
   timestamp: number;
-};
-
-export interface EngineConfig {
-  tickRate: number;
-  maxPlayers: number;
-  enablePhysics: boolean;
+  vector: [number, number];
 }
 
-export const DEFAULT_CONFIG: EngineConfig = {
-  tickRate: 64,
-  maxPlayers: 128,
-  enablePhysics: true,
+export const validateInput = <T>(schema: InputSchema<T>, data: unknown): T | null => {
+  if (!data || typeof data !== 'object') return null;
+  const keys = Object.keys(schema) as Array<keyof T>;
+  const isValid = keys.every(key => (schema[key] as Function)((data as any)[key]));
+  return isValid ? (data as T) : null;
 };
 
-export type ActionHandler<T> = (state: GameState, payload: T) => GameState;
+export const inputRules: InputSchema<GameInput> = {
+  action: (val): val is 'jump' | 'shoot' | 'move' => ['jump', 'shoot', 'move'].includes(val as string),
+  timestamp: (val): val is number => typeof val === 'number' && val > 0,
+  vector: (val): val is [number, number] => Array.isArray(val) && val.length === 2 && val.every(n => typeof n === 'number')
+};
 
-export interface ServiceRegistry {
-  register<T>(name: string, service: T): void;
-  resolve<T>(name: string): T;
-}
-
-export class GameException extends Error {
-  constructor(public code: string, message: string) {
-    super(message);
-    this.name = 'GameException';
+export function processFrame(rawInput: unknown) {
+  const validated = validateInput(inputRules, rawInput);
+  if (!validated) {
+    console.warn('[dev-toolkit-91] Rejected corrupt input frame');
+    return;
   }
+  console.log(`Processing ${validated.action} at ${validated.timestamp}`);
 }
