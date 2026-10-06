@@ -1,27 +1,34 @@
-export interface GameConfig {
-  resolution: { width: number; height: number };
-  fpsLimit: number;
-  enablePhysics: boolean;
+interface GameConfig {
+  renderScale: number;
+  maxPlayers: number;
+  debugMode: boolean;
 }
 
 const defaults: GameConfig = {
-  resolution: { width: 1920, height: 1080 },
-  fpsLimit: 144,
-  enablePhysics: true
+  renderScale: 1.0,
+  maxPlayers: 16,
+  debugMode: false
 };
 
-export const loadConfig = <T extends Partial<GameConfig>>(override: T): GameConfig => {
-  const config = { ...defaults, ...override };
-  config.resolution = { ...defaults.resolution, ...(override.resolution ?? {}) };
-  
-  const proxy = new Proxy(config, {
-    get: (target, prop) => {
-      const val = target[prop as keyof GameConfig];
-      return val !== undefined ? val : defaults[prop as keyof GameConfig];
+export class ConfigLoader {
+  private static instance: GameConfig;
+
+  public static load(overrides: Partial<GameConfig> = {}): GameConfig {
+    this.instance = { ...defaults, ...overrides };
+    return this.instance;
+  }
+
+  public static get(): GameConfig {
+    if (!this.instance) {
+      console.warn('Config not initialized, defaulting to base settings.');
+      return { ...defaults };
     }
-  });
+    return this.instance;
+  }
 
-  return proxy;
-};
+  public static patch(updates: Partial<GameConfig>): void {
+    this.instance = { ...this.instance, ...updates };
+  }
+}
 
-export const activeConfig = loadConfig({});
+export const getEngineConfig = (): GameConfig => ConfigLoader.get();
