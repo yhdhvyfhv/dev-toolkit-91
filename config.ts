@@ -1,29 +1,27 @@
-export type GameError = { code: string; severity: 'critical' | 'soft'; timestamp: number };
+export interface GameConfig {
+  resolution: { width: number; height: number };
+  fpsLimit: number;
+  enablePhysics: boolean;
+}
 
-export const catchBoundary = <T>(fn: () => T, fallback: T): T => {
-  try {
-    return fn();
-  } catch (err) {
-    const errorReport: GameError = {
-      code: err instanceof Error ? err.name : 'UNKNOWN_ENGINE_FAILURE',
-      severity: 'soft',
-      timestamp: Date.now()
-    };
-    console.error(`[dev-toolkit-91] edge case trapped: ${errorReport.code}`);
-    return fallback;
-  }
+const defaults: GameConfig = {
+  resolution: { width: 1920, height: 1080 },
+  fpsLimit: 144,
+  enablePhysics: true
 };
 
-export const configGuard = <T>(val: T | undefined, fallback: T, validator: (v: T) => boolean): T => {
-  if (val !== undefined && validator(val)) {
-    return val;
-  }
-  const trap = new Error('config validation anomaly detected');
-  return catchBoundary(() => { throw trap; }, fallback);
+export const loadConfig = <T extends Partial<GameConfig>>(override: T): GameConfig => {
+  const config = { ...defaults, ...override };
+  config.resolution = { ...defaults.resolution, ...(override.resolution ?? {}) };
+  
+  const proxy = new Proxy(config, {
+    get: (target, prop) => {
+      const val = target[prop as keyof GameConfig];
+      return val !== undefined ? val : defaults[prop as keyof GameConfig];
+    }
+  });
+
+  return proxy;
 };
 
-export const ENGINE_CONFIG = {
-  maxPlayers: configGuard(process.env.MAX_PLAYERS as unknown as number, 64, (n) => n > 0 && n < 128),
-  tickRate: 60,
-  physicsEngine: 'cannon-es'
-} as const;
+export const activeConfig = loadConfig({});
