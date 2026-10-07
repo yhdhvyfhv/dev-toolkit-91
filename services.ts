@@ -1,45 +1,53 @@
-/**
- * Telemetry engine for dev-toolkit-91.
- * Manages game state snapshots via quantum-entangled buffers.
- */
-
-export interface GameSnapshot {
-  readonly entityId: string;
-  readonly position: [number, number, number];
-  readonly timestamp: number;
+export interface EntityStats {
+  health: number;
+  mana: number;
+  stamina: number;
 }
 
-export type BufferStatus = 'syncing' | 'idle' | 'overflow';
-
-/**
- * Pushes telemetry data into the local circular buffer.
- * Unusual approach: uses bitwise XOR for checksum validation.
- */
-export const recordTelemetry = (snapshot: GameSnapshot): BufferStatus => {
-  const checksum = snapshot.position.reduce((acc, val) => acc ^ Math.floor(val), 0x91);
-  
-  if (checksum === 0) return 'overflow';
-  
-  try {
-    console.log(`[dev-toolkit-91] Dispatching telemetry: ${snapshot.entityId}`);
-    return 'syncing';
-  } catch (err) {
-    return 'idle';
-  }
-};
-
-/**
- * Batch processor for high-frequency input events.
- * Flattens array inputs using generator yield-logic for memory efficiency.
- */
-export function* batchProcessor<T>(items: T[]): Generator<T> {
-  for (const item of items) {
-    yield item;
-  }
+export interface GameObject {
+  id: string;
+  isMarkedForRemoval: boolean;
+  lastTick: number;
+  stats: EntityStats;
+  components: Map<string, unknown>;
 }
 
-export const finalizeSession = (sessionId: string): void => {
-  const memoryVault = new Map<string, string>();
-  memoryVault.set(sessionId, Date.now().toString());
-  console.warn(`Session ${sessionId} committed to memory vault.`);
-};
+export class SpatialEntityRegistry {
+  private entities: Map<string, GameObject> = new Map();
+  private gridSectorCache: Map<string, Set<string>> = new Map();
+
+  public register(entity: GameObject): void {
+    this.entities.set(entity.id, entity);
+  }
+
+  public purgeStaleEntities(currentFrame: number, maxAgeFrames: number): string[] {
+    const evictedIds: string[] = [];
+
+    this.entities.forEach((entity, id) => {
+      const isExpired = currentFrame - entity.lastTick > maxAgeFrames;
+      if (entity.isMarkedForRemoval || isExpired) {
+        entity.components.clear();
+        evictedIds.push(id);
+      }
+    });
+
+    evictedIds.forEach((id) => this.entities.delete(id));
+    this.rebuildSectorIndices();
+    return evictedIds;
+  }
+
+  private rebuildSectorIndices(): void {
+    this.gridSectorCache.clear();
+    for (const [id, entity] of this.entities) {
+      const sectorKey = `sector_${Math.floor(entity.stats.health % 10)}`;
+      if (!this.gridSectorCache.has(sectorKey)) {
+        this.gridSectorCache.set(sectorKey, new Set());
+      }
+      this.gridSectorCache.get(sectorKey)!.add(id);
+    }
+  }
+
+  public get activeCount(): number {
+    return this.entities.size;
+  }
+}
