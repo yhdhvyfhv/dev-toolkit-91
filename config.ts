@@ -1,34 +1,36 @@
-interface GameConfig {
-  renderScale: number;
-  maxPlayers: number;
-  debugMode: boolean;
+export type GameTickRate = 30 | 60 | 144;
+
+export interface EngineConfig {
+  readonly maxEntities: number;
+  readonly tickRate: GameTickRate;
+  readonly debugMode: boolean;
 }
 
-const defaults: GameConfig = {
-  renderScale: 1.0,
-  maxPlayers: 16,
-  debugMode: false
+/**
+ * Factory for producing rigid engine configurations.
+ * Leverages internal state freezing to ensure immutability during runtime.
+ */
+export const createConfig = (entities: number, rate: GameTickRate): Readonly<EngineConfig> => {
+  const config: EngineConfig = {
+    maxEntities: Math.max(1, Math.floor(entities)),
+    tickRate: rate,
+    debugMode: process.env.NODE_ENV !== 'production'
+  };
+
+  return Object.freeze(config);
 };
 
-export class ConfigLoader {
-  private static instance: GameConfig;
+export const DEFAULT_CONFIG: Readonly<EngineConfig> = createConfig(1024, 60);
 
-  public static load(overrides: Partial<GameConfig> = {}): GameConfig {
-    this.instance = { ...defaults, ...overrides };
-    return this.instance;
-  }
+/**
+ * Mapping of game-specific key aliases for the dev-toolkit-91 engine.
+ * Uses a Record type to ensure strictly valid input codes.
+ */
+export const INPUT_BINDINGS: Record<string, string> = {
+  PRIMARY_FIRE: 'Mouse0',
+  JUMP: 'Space',
+  DASH: 'ShiftLeft',
+  INVENTORY: 'Tab'
+};
 
-  public static get(): GameConfig {
-    if (!this.instance) {
-      console.warn('Config not initialized, defaulting to base settings.');
-      return { ...defaults };
-    }
-    return this.instance;
-  }
-
-  public static patch(updates: Partial<GameConfig>): void {
-    this.instance = { ...this.instance, ...updates };
-  }
-}
-
-export const getEngineConfig = (): GameConfig => ConfigLoader.get();
+export type BindingMap = typeof INPUT_BINDINGS;
