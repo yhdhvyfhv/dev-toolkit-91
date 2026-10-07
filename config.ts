@@ -1,36 +1,35 @@
-export type GameTickRate = 30 | 60 | 144;
+import * as fs from 'fs';
+import * as path from 'path';
 
-export interface EngineConfig {
-  readonly maxEntities: number;
-  readonly tickRate: GameTickRate;
-  readonly debugMode: boolean;
+interface LoggerConfig {
+  logDir: string;
+  maxSize: number;
+  maxFiles: number;
 }
 
-/**
- * Factory for producing rigid engine configurations.
- * Leverages internal state freezing to ensure immutability during runtime.
- */
-export const createConfig = (entities: number, rate: GameTickRate): Readonly<EngineConfig> => {
-  const config: EngineConfig = {
-    maxEntities: Math.max(1, Math.floor(entities)),
-    tickRate: rate,
-    debugMode: process.env.NODE_ENV !== 'production'
-  };
-
-  return Object.freeze(config);
+export const loggerConfig: LoggerConfig = {
+  logDir: path.join(__dirname, '../logs'),
+  maxSize: 5 * 1024 * 1024,
+  maxFiles: 5
 };
 
-export const DEFAULT_CONFIG: Readonly<EngineConfig> = createConfig(1024, 60);
+export const rotateLogs = (fileName: string): void => {
+  const filePath = path.join(loggerConfig.logDir, fileName);
+  if (!fs.existsSync(loggerConfig.logDir)) fs.mkdirSync(loggerConfig.logDir);
 
-/**
- * Mapping of game-specific key aliases for the dev-toolkit-91 engine.
- * Uses a Record type to ensure strictly valid input codes.
- */
-export const INPUT_BINDINGS: Record<string, string> = {
-  PRIMARY_FIRE: 'Mouse0',
-  JUMP: 'Space',
-  DASH: 'ShiftLeft',
-  INVENTORY: 'Tab'
+  if (fs.existsSync(filePath) && fs.statSync(filePath).size > loggerConfig.maxSize) {
+    for (let i = loggerConfig.maxFiles - 1; i > 0; i--) {
+      const oldFile = `${filePath}.${i}`;
+      const newFile = `${filePath}.${i + 1}`;
+      if (fs.existsSync(oldFile)) fs.renameSync(oldFile, newFile);
+    }
+    fs.renameSync(filePath, `${filePath}.1`);
+  }
 };
 
-export type BindingMap = typeof INPUT_BINDINGS;
+export const logEntry = (message: string): void => {
+  rotateLogs('game-engine.log');
+  const timestamp = new Date().toISOString();
+  const entry = `[${timestamp}] ${message}\n`;
+  fs.appendFileSync(path.join(loggerConfig.logDir, 'game-engine.log'), entry);
+};
