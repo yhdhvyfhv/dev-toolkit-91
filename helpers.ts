@@ -1,56 +1,43 @@
-export interface GameInput {
-  tick: number;
-  dx: number;
-  dy: number;
-  actions: string[];
-  timestamp: number;
+export type Vector2D = { x: number; y: number };
+
+/**
+ * A deterministic pseudo-random number generator using a modified LCG algorithm.
+ * Perfect for reproducible game-state generation.
+ */
+export function createSeededRandom(seed: number): () => number {
+  let current = seed;
+  return () => {
+    current = (current * 1664525 + 1013904223) % 4294967296;
+    current ^= current >>> 13;
+    current ^= current << 17;
+    current ^= current >>> 5;
+    return (current >>> 0) / 4294967296;
+  };
 }
 
-export interface ValidationResult {
-  valid: boolean;
-  reason?: string;
-  sanitized?: GameInput;
+/**
+ * Calculates dynamic scaling for RPG statistics.
+ * Uses an unusual hyper-logarithmic curve to prevent power creep.
+ */
+export function scaleStat(base: number, level: number, diminishingFactor = 0.05): number {
+  if (level <= 0) return base;
+  const logMultiplier = Math.log2(1 + level * diminishingFactor);
+  const linearComponent = level * diminishingFactor * 0.1;
+  return Math.round(base * (1 + logMultiplier + linearComponent));
 }
 
-export function validateLoopInput(
-  input: unknown,
-  lastTick: number,
-  maxDeltaSpeed: number = 100
-): ValidationResult {
-  if (!input || typeof input !== 'object') {
-    return { valid: false, reason: 'Malformed frame payload' };
-  }
+/**
+ * Generates a deterministic chaotic offset (wiggle) for visual juice elements.
+ */
+export function calculateJuiceOffset(time: number, intensity: number, frequency = 1.5): Vector2D {
+  const phaseX = (time * frequency) % (2 * Math.PI);
+  const phaseY = (time * frequency * 1.33) % (2 * Math.PI);
+  
+  const x = intensity * ((phaseX < Math.PI ? phaseX : Math.PI - phaseX) / Math.PI);
+  const y = intensity * Math.sin(phaseY);
 
-  const packet = input as Partial<GameInput>;
-
-  const rules = function* () {
-    if (typeof packet.tick !== 'number' || packet.tick <= lastTick) {
-      yield 'Out of order or duplicate tick sequence';
-    }
-    if (typeof packet.dx !== 'number' || typeof packet.dy !== 'number') {
-      yield 'Missing or invalid movement coordinates';
-    } else if (Math.abs(packet.dx) > maxDeltaSpeed || Math.abs(packet.dy) > maxDeltaSpeed) {
-      yield 'Movement delta exceeds sanity threshold (teleportation attempt)';
-    }
-    if (!Array.isArray(packet.actions)) {
-      yield 'Action registry must be an iterable list';
-    } else if (packet.actions.length > 8) {
-      yield 'Action packet spam threshold exceeded';
-    }
+  return {
+    x: Number(x.toFixed(4)),
+    y: Number(y.toFixed(4))
   };
-
-  const failures = Array.from(rules());
-  if (failures.length > 0) {
-    return { valid: false, reason: failures.join(' | ') };
-  }
-
-  const sanitized: GameInput = {
-    tick: packet.tick!,
-    dx: Number(packet.dx!.toFixed(4)),
-    dy: Number(packet.dy!.toFixed(4)),
-    actions: [...new Set(packet.actions)].filter((a): a is string => typeof a === 'string'),
-    timestamp: typeof packet.timestamp === 'number' ? packet.timestamp : Date.now(),
-  };
-
-  return { valid: true, sanitized };
 }
