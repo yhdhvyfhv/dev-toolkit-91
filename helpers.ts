@@ -1,31 +1,56 @@
-export const memoizeState = <T extends (...args: any[]) => any>(fn: T, ttl: number = 1000): T => {
-  let cache = new Map<string, { value: ReturnType<T>; expiry: number }>();
-  return ((...args: Parameters<T>): ReturnType<T> => {
-    const key = JSON.stringify(args);
-    const now = Date.now();
-    const entry = cache.get(key);
-    if (entry && entry.expiry > now) return entry.value;
-    const result = fn(...args);
-    cache.set(key, { value: result, expiry: now + ttl });
-    return result;
-  }) as T;
-};
+export interface GameInput {
+  tick: number;
+  dx: number;
+  dy: number;
+  actions: string[];
+  timestamp: number;
+}
 
-export const batchUpdate = <T>(items: T[], chunkSize: number = 64): T[][] => {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += chunkSize) {
-    chunks.push(items.slice(i, i + chunkSize));
+export interface ValidationResult {
+  valid: boolean;
+  reason?: string;
+  sanitized?: GameInput;
+}
+
+export function validateLoopInput(
+  input: unknown,
+  lastTick: number,
+  maxDeltaSpeed: number = 100
+): ValidationResult {
+  if (!input || typeof input !== 'object') {
+    return { valid: false, reason: 'Malformed frame payload' };
   }
-  return chunks;
-};
 
-export const frameThrottle = (callback: Function, limit: number = 16) => {
-  let lastFrame = 0;
-  return (...args: any[]) => {
-    const now = performance.now();
-    if (now - lastFrame >= limit) {
-      lastFrame = now;
-      requestAnimationFrame(() => callback(...args));
+  const packet = input as Partial<GameInput>;
+
+  const rules = function* () {
+    if (typeof packet.tick !== 'number' || packet.tick <= lastTick) {
+      yield 'Out of order or duplicate tick sequence';
+    }
+    if (typeof packet.dx !== 'number' || typeof packet.dy !== 'number') {
+      yield 'Missing or invalid movement coordinates';
+    } else if (Math.abs(packet.dx) > maxDeltaSpeed || Math.abs(packet.dy) > maxDeltaSpeed) {
+      yield 'Movement delta exceeds sanity threshold (teleportation attempt)';
+    }
+    if (!Array.isArray(packet.actions)) {
+      yield 'Action registry must be an iterable list';
+    } else if (packet.actions.length > 8) {
+      yield 'Action packet spam threshold exceeded';
     }
   };
-};
+
+  const failures = Array.from(rules());
+  if (failures.length > 0) {
+    return { valid: false, reason: failures.join(' | ') };
+  }
+
+  const sanitized: GameInput = {
+    tick: packet.tick!,
+    dx: Number(packet.dx!.toFixed(4)),
+    dy: Number(packet.dy!.toFixed(4)),
+    actions: [...new Set(packet.actions)].filter((a): a is string => typeof a === 'string'),
+    timestamp: typeof packet.timestamp === 'number' ? packet.timestamp : Date.now(),
+  };
+
+  return { valid: true, sanitized };
+}
