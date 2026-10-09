@@ -1,33 +1,37 @@
-type EntityId = string | number;
-
-interface GameAsset {
-  id: EntityId;
-  tags: Set<string>;
-  load: () => Promise<void>;
+export interface RetryConfig {
+  maxRetries: number;
+  initialDelay: number;
+  multiplier: number;
+  chaosPercent: number;
 }
 
-export const sanitizeEntity = <T extends GameAsset>(entity: T): T => {
-  const sanitized = { ...entity };
-  sanitized.tags = new Set([...sanitized.tags].map((t) => t.toLowerCase().trim()));
-  return sanitized;
-};
+/**
+ * Executes an async network operation with chaotic exponential backoff.
+ * Helps prevent game client synchronization storms (thundering herd problem).
+ */
+export async function resurrectNetworkCall<T>(
+  operation: () => Promise<T>,
+  config: Partial<RetryConfig> = {}
+): Promise<T> {
+  const { maxRetries = 4, initialDelay = 150, multiplier = 2, chaosPercent = 30 } = config;
+  let lastError: unknown;
 
-export const assetLoaderPool = async (assets: GameAsset[]): Promise<void[]> => {
-  const queue = assets.map((a) => a.load());
-  return Promise.all(queue);
-};
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxRetries) break;
 
-export const throttleExecution = <F extends (...args: any[]) => any>(fn: F, limit: number) => {
-  let lastRun = 0;
-  return (...args: Parameters<F>): ReturnType<F> | undefined => {
-    const now = Date.now();
-    if (now - lastRun >= limit) {
-      lastRun = now;
-      return fn(...args);
+      const baseDelay = initialDelay * Math.pow(multiplier, attempt - 1);
+      const chaosVariance = baseDelay * (chaosPercent / 100);
+      const jitter = (Math.random() * 2 - 1) * chaosVariance;
+      const actualDelay = Math.max(0, baseDelay + jitter);
+
+      await new Promise((resolve) => setTimeout(resolve, actualDelay));
     }
-  };
-};
+  }
 
-export const generateHash = (input: string): string => {
-  return btoa(input).replace(/=/g, '').split('').reverse().join('');
-};
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Network operation failed after ${maxRetries} attempts. Reason: ${message}`);
+}
