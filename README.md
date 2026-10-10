@@ -1,52 +1,50 @@
 # dev-toolkit-91
 
-A high-performance TypeScript utility library designed to streamline the development of gaming backend services. It provides optimized primitives for state synchronization, entity interpolation, and low-latency packet handling.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+`dev-toolkit-91` is a high-performance TypeScript utility library designed for web-based game engines and interactive canvas applications. It streamlines complex browser game development by providing lightweight, zero-dependency modules for spatial indexing, frame-accurate input buffering, and state interpolation.
 
 ## Features
 
-*   **Fixed-Step Simulation Engine:** A deterministic game loop implementation that ensures consistent physics calculations across varying server tick rates.
-*   **Binary Buffer Serializer:** Highly optimized decorators for compact binary data serialization, reducing network payload overhead by up to 60%.
-*   **Spatial Hashing Grid:** An O(1) complexity spatial query system for efficient proximity detection and collision filtering.
-*   **Event-Driven Sync:** Built-in Pub/Sub patterns specifically tuned for real-time game state broadcasts with minimal event propagation delay.
+- **Spatial Hash Grid:** $O(1)$ broad-phase collision detection for thousands of dynamic 2D entities.
+- **Action-Based Input Mapper:** Unified keyboard, gamepad, and pointer management with customizable frame buffers.
+- **State Interpolator:** Fixed-timestep rendering synchronization to eliminate visual jitter across varied refresh rates.
+- **Type-Safe Event Bus:** High-throughput publish-subscribe system optimized for core game loop events without garbage collection overhead.
 
 ## Installation
 
-Install the package via npm:
+Install via your preferred package manager:
 
 ```bash
 npm install dev-toolkit-91
 ```
 
-Or using yarn:
+Or using `pnpm`:
 
 ```bash
-yarn add dev-toolkit-91
+pnpm add dev-toolkit-91
 ```
 
-## Usage
-
-Implement a synchronized game entity by extending the base class:
+## Quick Start
 
 ```typescript
-import { Entity, sync } from 'dev-toolkit-91';
+import { SpatialHashGrid, InputMapper } from 'dev-toolkit-91';
 
-class Player extends Entity {
-  @sync()
-  public health: number = 100;
+// 1. Initialize a Spatial Hash Grid for fast collision queries
+const grid = new SpatialHashGrid({ cellSize: 64, bounds: { width: 1920, height: 1080 } });
 
-  @sync()
-  public position: { x: number; y: number } = { x: 0, y: 0 };
-}
+grid.insert({ id: 'player_1', x: 150, y: 300, radius: 16 });
+grid.insert({ id: 'enemy_9', x: 170, y: 310, radius: 16 });
 
-const player = new Player();
+const targets = grid.queryArea({ x: 140, y: 290, width: 50, height: 50 });
+console.log(`Found ${targets.length} entities nearby.`);
 
-// Access the optimized sync stream for network broadcasts
-const packet = player.serialize();
-console.log('Sending state:', packet);
-```
+// 2. Set up frame-accurate input handling
+const inputs = new InputMapper();
+inputs.bindKey('KeyW', 'MOVE_UP');
+inputs.bindKey('Space', 'ATTACK');
 
-## License
+function updateGameLoop() {
+  inputs.poll();
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+  if (inputs.isActionActive
