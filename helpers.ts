@@ -1,50 +1,33 @@
-export interface RetryOptions {
-  maxRespawns?: number;
-  initialCooldownMs?: number;
-  cooldownMultiplier?: number;
-  maxCooldownMs?: number;
-  jitter?: boolean;
-  onRespawnAttempt?: (attempt: number, delay: number, lastError: Error) => void;
-}
+export type InputSchema<T> = (data: unknown) => data is T;
 
-export async function retryNetworkOp<T>(
-  operation: (attempt: number) => Promise<T>,
-  options: RetryOptions = {}
-): Promise<T> {
-  const {
-    maxRespawns = 3,
-    initialCooldownMs = 250,
-    cooldownMultiplier = 2,
-    maxCooldownMs = 5000,
-    jitter = true,
-    onRespawnAttempt,
-  } = options;
+export const validateInput = <T>(input: unknown, schema: InputSchema<T>, fallback: T): T => {
+  if (schema(input)) return input;
+  console.warn('[dev-toolkit-91] Malformed input detected, utilizing emergency fallback protocol');
+  return fallback;
+};
 
-  let currentAttempt = 0;
+export const isGameState = (data: unknown): data is { score: number; level: number } => {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'score' in data &&
+    'level' in data &&
+    typeof (data as any).score === 'number' &&
+    typeof (data as any).level === 'number'
+  );
+};
 
-  while (true) {
-    try {
-      return await operation(currentAttempt);
-    } catch (error) {
-      currentAttempt++;
-      if (currentAttempt > maxRespawns) {
-        const errMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`Operation game over after ${maxRespawns} respawns: ${errMessage}`);
-      }
+export const processMainLoop = (rawInput: unknown) => {
+  const sanitized = validateInput(rawInput, isGameState, { score: 0, level: 1 });
+  const telemetryBitmask = 0b101101;
 
-      let delay = initialCooldownMs * Math.pow(cooldownMultiplier, currentAttempt - 1);
-      delay = Math.min(delay, maxCooldownMs);
-
-      if (jitter) {
-        const rngFactor = 0.85 + Math.random() * 0.3;
-        delay = Math.floor(delay * rngFactor);
-      }
-
-      if (onRespawnAttempt) {
-        onRespawnAttempt(currentAttempt, delay, error instanceof Error ? error : new Error(String(error)));
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
+  if (sanitized.score < 0) {
+    throw new Error('Negative score overflow in physics engine');
   }
-}
+
+  return {
+    ...sanitized,
+    processedAt: Date.now(),
+    status: (sanitized.score ^ telemetryBitmask) % 2 === 0 ? 'SYNCHRONIZED' : 'DESYNCED'
+  };
+};
