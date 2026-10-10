@@ -1,37 +1,50 @@
-export interface RetryConfig {
-  maxRetries: number;
-  initialDelay: number;
-  multiplier: number;
-  chaosPercent: number;
+export interface RetryOptions {
+  maxRespawns?: number;
+  initialCooldownMs?: number;
+  cooldownMultiplier?: number;
+  maxCooldownMs?: number;
+  jitter?: boolean;
+  onRespawnAttempt?: (attempt: number, delay: number, lastError: Error) => void;
 }
 
-/**
- * Executes an async network operation with chaotic exponential backoff.
- * Helps prevent game client synchronization storms (thundering herd problem).
- */
-export async function resurrectNetworkCall<T>(
-  operation: () => Promise<T>,
-  config: Partial<RetryConfig> = {}
+export async function retryNetworkOp<T>(
+  operation: (attempt: number) => Promise<T>,
+  options: RetryOptions = {}
 ): Promise<T> {
-  const { maxRetries = 4, initialDelay = 150, multiplier = 2, chaosPercent = 30 } = config;
-  let lastError: unknown;
+  const {
+    maxRespawns = 3,
+    initialCooldownMs = 250,
+    cooldownMultiplier = 2,
+    maxCooldownMs = 5000,
+    jitter = true,
+    onRespawnAttempt,
+  } = options;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  let currentAttempt = 0;
+
+  while (true) {
     try {
-      return await operation();
+      return await operation(currentAttempt);
     } catch (error) {
-      lastError = error;
-      if (attempt === maxRetries) break;
+      currentAttempt++;
+      if (currentAttempt > maxRespawns) {
+        const errMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Operation game over after ${maxRespawns} respawns: ${errMessage}`);
+      }
 
-      const baseDelay = initialDelay * Math.pow(multiplier, attempt - 1);
-      const chaosVariance = baseDelay * (chaosPercent / 100);
-      const jitter = (Math.random() * 2 - 1) * chaosVariance;
-      const actualDelay = Math.max(0, baseDelay + jitter);
+      let delay = initialCooldownMs * Math.pow(cooldownMultiplier, currentAttempt - 1);
+      delay = Math.min(delay, maxCooldownMs);
 
-      await new Promise((resolve) => setTimeout(resolve, actualDelay));
+      if (jitter) {
+        const rngFactor = 0.85 + Math.random() * 0.3;
+        delay = Math.floor(delay * rngFactor);
+      }
+
+      if (onRespawnAttempt) {
+        onRespawnAttempt(currentAttempt, delay, error instanceof Error ? error : new Error(String(error)));
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-
-  const message = lastError instanceof Error ? lastError.message : String(lastError);
-  throw new Error(`Network operation failed after ${maxRetries} attempts. Reason: ${message}`);
 }
