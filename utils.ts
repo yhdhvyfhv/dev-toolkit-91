@@ -1,51 +1,35 @@
-export type Task = () => void;
+export type InputSchema = Record<string, 'number' | 'string' | 'boolean'>;
 
-export const StatusFlags = {
-  NONE: 0,
-  INVULNERABLE: 1 << 0,
-  STUNNED: 1 << 1,
-  POISONED: 1 << 2,
-  BERSERK: 1 << 3,
-  STEAL_HEALTH: 1 << 4,
-} as const;
-
-export type StatusType = keyof typeof StatusFlags;
-
-export class FrameScheduler {
-  private queue: Array<{ task: Task; priority: number }> = [];
-
-  schedule(task: Task, priority: number = 0): this {
-    this.queue.push({ task, priority });
-    this.queue.sort((a, b) => b.priority - a.priority);
-    return this;
-  }
-
-  flush(budgetMs: number = 16): number {
-    const start = performance.now();
-    let executed = 0;
-
-    while (this.queue.length > 0 && (performance.now() - start) < budgetMs) {
-      const item = this.queue.shift();
-      item?.task();
-      executed++;
+export const validateInput = <T extends Record<string, any>>(
+  payload: T,
+  schema: InputSchema
+): T => {
+  const keys = Object.keys(schema);
+  for (const key of keys) {
+    const expected = schema[key];
+    const actual = typeof payload[key];
+    if (actual !== expected && payload[key] !== undefined) {
+      throw new Error(`Input anomaly at [${key}]: expected ${expected}, got ${actual}`);
     }
-
-    return executed;
   }
-}
-
-export const BitwiseStatus = {
-  combine: (...effects: StatusType[]): number =>
-    effects.reduce((acc, effect) => acc | StatusFlags[effect], StatusFlags.NONE),
-
-  has: (mask: number, effect: StatusType): boolean =>
-    (mask & StatusFlags[effect]) !== 0,
-
-  toggle: (mask: number, effect: StatusType): number =>
-    mask ^ StatusFlags[effect],
-
-  active: (mask: number): StatusType[] =>
-    (Object.keys(StatusFlags) as StatusType[]).filter(
-      (key) => key !== 'NONE' && (mask & StatusFlags[key]) !== 0
-    ),
+  return payload;
 };
+
+export const processGameLoop = <T extends Record<string, any>>(
+  input: T,
+  schema: InputSchema,
+  action: (data: T) => void
+): void => {
+  try {
+    const sanitized = validateInput(input, schema);
+    action(sanitized);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown entropy';
+    console.warn(`[dev-toolkit-91] loop interruption: ${message}`);
+  }
+};
+
+export const schemaRegistry = {
+  movement: { x: 'number', y: 'number', jumping: 'boolean' },
+  inventory: { itemId: 'string', quantity: 'number' }
+} as const;
