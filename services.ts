@@ -1,53 +1,35 @@
-export interface EntityStats {
-  health: number;
-  mana: number;
-  stamina: number;
+export class GamingEngineError extends Error {
+  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
+    super(message);
+    this.name = 'GamingEngineError';
+  }
 }
 
-export interface GameObject {
-  id: string;
-  isMarkedForRemoval: boolean;
-  lastTick: number;
-  stats: EntityStats;
-  components: Map<string, unknown>;
-}
-
-export class SpatialEntityRegistry {
-  private entities: Map<string, GameObject> = new Map();
-  private gridSectorCache: Map<string, Set<string>> = new Map();
-
-  public register(entity: GameObject): void {
-    this.entities.set(entity.id, entity);
+export const safeExecute = async <T>(task: () => Promise<T>, fallback: T): Promise<T> => {
+  try {
+    return await task();
+  } catch (error) {
+    const err = error as GamingEngineError;
+    console.error(`[dev-toolkit-91] Critical failure in ${err.code}:`, err.message);
+    return fallback;
   }
+};
 
-  public purgeStaleEntities(currentFrame: number, maxAgeFrames: number): string[] {
-    const evictedIds: string[] = [];
-
-    this.entities.forEach((entity, id) => {
-      const isExpired = currentFrame - entity.lastTick > maxAgeFrames;
-      if (entity.isMarkedForRemoval || isExpired) {
-        entity.components.clear();
-        evictedIds.push(id);
-      }
-    });
-
-    evictedIds.forEach((id) => this.entities.delete(id));
-    this.rebuildSectorIndices();
-    return evictedIds;
+export const validateGameState = (state: unknown): boolean => {
+  if (!state || typeof state !== 'object') {
+    throw new GamingEngineError('INVALID_STATE', 'State payload is corrupted or null');
   }
+  return true;
+};
 
-  private rebuildSectorIndices(): void {
-    this.gridSectorCache.clear();
-    for (const [id, entity] of this.entities) {
-      const sectorKey = `sector_${Math.floor(entity.stats.health % 10)}`;
-      if (!this.gridSectorCache.has(sectorKey)) {
-        this.gridSectorCache.set(sectorKey, new Set());
-      }
-      this.gridSectorCache.get(sectorKey)!.add(id);
+export const retryOperation = async <T>(op: () => Promise<T>, retries = 3): Promise<T> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await op();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, Math.pow(2, i) * 100));
     }
   }
-
-  public get activeCount(): number {
-    return this.entities.size;
-  }
-}
+  throw new GamingEngineError('RETRY_LIMIT_EXCEEDED', 'Max attempts reached for engine operation');
+};
