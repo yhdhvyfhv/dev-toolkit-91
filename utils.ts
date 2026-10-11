@@ -1,30 +1,51 @@
-export type RetryConfig = {
-  maxAttempts: number;
-  delayMs: number;
-  backoffFactor: number;
-};
+export type Task = () => void;
 
-export async function withRetry<T>(
-  operation: () => Promise<T>,
-  config: RetryConfig = { maxAttempts: 3, delayMs: 500, backoffFactor: 2 }
-): Promise<T> {
-  let lastError: unknown;
-  let currentDelay = config.delayMs;
+export const StatusFlags = {
+  NONE: 0,
+  INVULNERABLE: 1 << 0,
+  STUNNED: 1 << 1,
+  POISONED: 1 << 2,
+  BERSERK: 1 << 3,
+  STEAL_HEALTH: 1 << 4,
+} as const;
 
-  for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
-    try {
-      return await operation();
-    } catch (err) {
-      lastError = err;
-      if (attempt === config.maxAttempts) break;
+export type StatusType = keyof typeof StatusFlags;
 
-      await new Promise((resolve) => setTimeout(resolve, currentDelay));
-      currentDelay *= config.backoffFactor;
-    }
+export class FrameScheduler {
+  private queue: Array<{ task: Task; priority: number }> = [];
+
+  schedule(task: Task, priority: number = 0): this {
+    this.queue.push({ task, priority });
+    this.queue.sort((a, b) => b.priority - a.priority);
+    return this;
   }
 
-  throw lastError;
+  flush(budgetMs: number = 16): number {
+    const start = performance.now();
+    let executed = 0;
+
+    while (this.queue.length > 0 && (performance.now() - start) < budgetMs) {
+      const item = this.queue.shift();
+      item?.task();
+      executed++;
+    }
+
+    return executed;
+  }
 }
 
-export const gamingExponentialBackoff = (attempt: number): number => 
-  Math.pow(2, attempt) * 100 + Math.random() * 50;
+export const BitwiseStatus = {
+  combine: (...effects: StatusType[]): number =>
+    effects.reduce((acc, effect) => acc | StatusFlags[effect], StatusFlags.NONE),
+
+  has: (mask: number, effect: StatusType): boolean =>
+    (mask & StatusFlags[effect]) !== 0,
+
+  toggle: (mask: number, effect: StatusType): number =>
+    mask ^ StatusFlags[effect],
+
+  active: (mask: number): StatusType[] =>
+    (Object.keys(StatusFlags) as StatusType[]).filter(
+      (key) => key !== 'NONE' && (mask & StatusFlags[key]) !== 0
+    ),
+};
