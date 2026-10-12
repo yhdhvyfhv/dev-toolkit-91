@@ -1,29 +1,37 @@
-export type InputSchema<T> = { [K in keyof T]: (val: unknown) => val is T[K] };
+export type GameTick = number;
+export type EntityId = string;
 
-export interface GameInput {
-  action: 'jump' | 'shoot' | 'move';
-  timestamp: number;
-  vector: [number, number];
+export interface PerformanceBuffer {
+  readonly capacity: number;
+  readonly pointer: number;
+  readonly data: Float64Array;
 }
 
-export const validateInput = <T>(schema: InputSchema<T>, data: unknown): T | null => {
-  if (!data || typeof data !== 'object') return null;
-  const keys = Object.keys(schema) as Array<keyof T>;
-  const isValid = keys.every(key => (schema[key] as Function)((data as any)[key]));
-  return isValid ? (data as T) : null;
-};
+export const createFrameBuffer = (capacity: number = 64): PerformanceBuffer => ({
+  capacity,
+  pointer: 0,
+  data: new Float64Array(capacity).fill(-1),
+});
 
-export const inputRules: InputSchema<GameInput> = {
-  action: (val): val is 'jump' | 'shoot' | 'move' => ['jump', 'shoot', 'move'].includes(val as string),
-  timestamp: (val): val is number => typeof val === 'number' && val > 0,
-  vector: (val): val is [number, number] => Array.isArray(val) && val.length === 2 && val.every(n => typeof n === 'number')
-};
+export function recordFrameTime(buffer: PerformanceBuffer, duration: number): void {
+  buffer.data[buffer.pointer] = duration;
+  buffer.pointer = (buffer.pointer + 1) % buffer.capacity;
+}
 
-export function processFrame(rawInput: unknown) {
-  const validated = validateInput(inputRules, rawInput);
-  if (!validated) {
-    console.warn('[dev-toolkit-91] Rejected corrupt input frame');
-    return;
+export function getAverageLatency(buffer: PerformanceBuffer): number {
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < buffer.capacity; i++) {
+    if (buffer.data[i] !== -1) {
+      sum += buffer.data[i];
+      count++;
+    }
   }
-  console.log(`Processing ${validated.action} at ${validated.timestamp}`);
+  return count > 0 ? sum / count : 0;
 }
+
+export type EngineState = {
+  readonly fps: number;
+  readonly frameLatency: PerformanceBuffer;
+  readonly memoryPressure: boolean;
+};
