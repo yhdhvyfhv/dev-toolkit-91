@@ -1,35 +1,33 @@
-export type InputSchema = Record<string, 'number' | 'string' | 'boolean'>;
+export type GameInput = { action: string; sequence: number; timestamp: number };
 
-export const validateInput = <T extends Record<string, any>>(
-  payload: T,
-  schema: InputSchema
-): T => {
-  const keys = Object.keys(schema);
-  for (const key of keys) {
-    const expected = schema[key];
-    const actual = typeof payload[key];
-    if (actual !== expected && payload[key] !== undefined) {
-      throw new Error(`Input anomaly at [${key}]: expected ${expected}, got ${actual}`);
+export const validateInput = (input: unknown): input is GameInput => {
+  if (typeof input !== 'object' || input === null) return false;
+  const { action, sequence, timestamp } = input as Record<string, unknown>;
+  return (
+    typeof action === 'string' &&
+    action.length > 0 &&
+    Number.isInteger(sequence) &&
+    sequence >= 0 &&
+    typeof timestamp === 'number' &&
+    timestamp <= Date.now()
+  );
+};
+
+export const processGameLoop = (inputQueue: unknown[]): void => {
+  const now = Date.now();
+  const safeQueue = inputQueue.filter(validateInput);
+  
+  for (const input of safeQueue) {
+    const latency = now - input.timestamp;
+    if (latency > 500) {
+      console.warn(`Packet ${input.sequence} dropped: Latency ${latency}ms`);
+      continue;
     }
-  }
-  return payload;
-};
-
-export const processGameLoop = <T extends Record<string, any>>(
-  input: T,
-  schema: InputSchema,
-  action: (data: T) => void
-): void => {
-  try {
-    const sanitized = validateInput(input, schema);
-    action(sanitized);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown entropy';
-    console.warn(`[dev-toolkit-91] loop interruption: ${message}`);
+    applyAction(input);
   }
 };
 
-export const schemaRegistry = {
-  movement: { x: 'number', y: 'number', jumping: 'boolean' },
-  inventory: { itemId: 'string', quantity: 'number' }
-} as const;
+const applyAction = (input: GameInput): void => {
+  // Core engine hook for valid state mutations
+  console.log(`Executing ${input.action} for sequence ${input.sequence}`);
+};
