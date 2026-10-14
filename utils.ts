@@ -1,36 +1,35 @@
-export const lerp = (start: number, end: number, amt: number): number => (1 - amt) * start + amt * end;
+type CacheEntry<T> = { value: T; expiry: number };
 
-export const clamp = (val: number, min: number, max: number): number => Math.min(Math.max(val, min), max);
+const memoMap = new Map<string, CacheEntry<unknown>>();
 
-export const normalizeVector = (x: number, y: number): { x: number; y: number } => {
-  const len = Math.sqrt(x * x + y * y);
-  return len > 0 ? { x: x / len, y: y / len } : { x: 0, y: 0 };
+export const memoizeTask = <T>(key: string, task: () => T, ttl: number = 5000): T => {
+  const now = Date.now();
+  const cached = memoMap.get(key);
+
+  if (cached && cached.expiry > now) {
+    return cached.value as T;
+  }
+
+  const result = task();
+  memoMap.set(key, { value: result, expiry: now + ttl });
+  return result;
 };
 
-export const rng = (min: number, max: number): number => Math.random() * (max - min) + min;
+export const batchProcess = <T, R>(items: T[], fn: (batch: T[]) => R[], chunkSize: number = 100): R[] => {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    results.push(...fn(items.slice(i, i + chunkSize)));
+  }
+  return results;
+};
 
-export const uuid = (): string => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-  const r = (Math.random() * 16) | 0;
-  const v = c === 'x' ? r : (r & 0x3) | 0x8;
-  return v.toString(16);
-});
-
-export const throttle = <T extends (...args: any[]) => void>(fn: T, ms: number) => {
-  let last = 0;
-  return (...args: Parameters<T>) => {
+export const throttleExecution = <F extends (...args: any[]) => any>(func: F, limit: number) => {
+  let lastRan: number;
+  return (...args: Parameters<F>): ReturnType<F> | undefined => {
     const now = Date.now();
-    if (now - last >= ms) {
-      last = now;
-      fn(...args);
+    if (!lastRan || (now - lastRan) >= limit) {
+      lastRan = now;
+      return func(...args);
     }
   };
-};
-
-export const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
-  const res = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return res ? {
-    r: parseInt(res[1], 16),
-    g: parseInt(res[2], 16),
-    b: parseInt(res[3], 16)
-  } : { r: 0, g: 0, b: 0 };
 };
