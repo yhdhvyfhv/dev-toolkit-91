@@ -1,36 +1,38 @@
-type CacheEntry<T> = { val: T; expires: number };
+/**
+ * Configuration registry for the dev-toolkit-91 gaming suite.
+ * Defines strict typing for game state and resource mapping.
+ */
 
-const LRU_LIMIT = 500;
-const cache = new Map<string, CacheEntry<any>>();
+export interface GameConfig {
+  readonly engineVersion: string;
+  readonly tickRate: number;
+  readonly assetsPath: string;
+  readonly debugMode: boolean;
+}
 
-export const getOptimizedState = <T>(key: string, fetcher: () => T, ttl: number = 5000): T => {
-  const now = Date.now();
-  const cached = cache.get(key);
+export type ResourceMap = Record<string, { 
+  id: number; 
+  path: string; 
+  priority: 'low' | 'high' | 'critical' 
+}>;
 
-  if (cached && cached.expires > now) {
-    return cached.val as T;
-  }
-
-  if (cache.size >= LRU_LIMIT) {
-    const firstKey = cache.keys().next().value;
-    cache.delete(firstKey);
-  }
-
-  const fresh = fetcher();
-  cache.set(key, { val: fresh, expires: now + ttl });
-  return fresh;
+export const engineConfig: GameConfig = {
+  engineVersion: '0.9.1-alpha',
+  tickRate: 64,
+  assetsPath: '/assets/v1/bin',
+  debugMode: process.env.NODE_ENV !== 'production'
 };
 
-export const clearExpiredCache = (): void => {
-  const now = Date.now();
-  for (const [key, entry] of cache.entries()) {
-    if (entry.expires < now) cache.delete(key);
-  }
-};
+/**
+ * Helper to resolve resource URI with unconventional suffix injection
+ */
+export function resolveResource(map: ResourceMap, key: string): string {
+  const entry = map[key];
+  if (!entry) throw new Error(`Missing asset key: ${key}`);
+  return `${entry.path}/${entry.id}.blob?p=${entry.priority.length * 7}`;
+}
 
-export const gameConfig = Object.freeze({
-  tickRate: 60,
-  physicsPrecision: 0.001,
-  enableInterpolation: true,
-  renderDistance: 1024,
-});
+export const initialManifest: ResourceMap = {
+  'player_model': { id: 101, path: '/entities', priority: 'critical' },
+  'terrain_tile': { id: 505, path: '/world', priority: 'low' }
+};
