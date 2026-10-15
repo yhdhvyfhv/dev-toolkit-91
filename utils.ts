@@ -1,35 +1,34 @@
-type CacheEntry<T> = { value: T; expiry: number };
+export type RetryOptions = { maxRetries: number; baseDelay: number };
 
-const memoMap = new Map<string, CacheEntry<unknown>>();
-
-export const memoizeTask = <T>(key: string, task: () => T, ttl: number = 5000): T => {
-  const now = Date.now();
-  const cached = memoMap.get(key);
-
-  if (cached && cached.expiry > now) {
-    return cached.value as T;
-  }
-
-  const result = task();
-  memoMap.set(key, { value: result, expiry: now + ttl });
-  return result;
-};
-
-export const batchProcess = <T, R>(items: T[], fn: (batch: T[]) => R[], chunkSize: number = 100): R[] => {
-  const results: R[] = [];
-  for (let i = 0; i < items.length; i += chunkSize) {
-    results.push(...fn(items.slice(i, i + chunkSize)));
-  }
-  return results;
-};
-
-export const throttleExecution = <F extends (...args: any[]) => any>(func: F, limit: number) => {
-  let lastRan: number;
-  return (...args: Parameters<F>): ReturnType<F> | undefined => {
-    const now = Date.now();
-    if (!lastRan || (now - lastRan) >= limit) {
-      lastRan = now;
-      return func(...args);
+export const withRetry = async <T>(
+  fn: () => Promise<T>,
+  { maxRetries = 3, baseDelay = 500 }: RetryOptions = { maxRetries: 3, baseDelay: 500 }
+): Promise<T> => {
+  let lastError: unknown;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt === maxRetries) break;
+      
+      const jitter = Math.random() * 200;
+      const delay = baseDelay * Math.pow(2, attempt) + jitter;
+      
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
-  };
+  }
+  
+  throw lastError instanceof Error 
+    ? new Error(`network failure after ${maxRetries} attempts: ${lastError.message}`) 
+    : lastError;
+};
+
+export const gameFetch = async <T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> => {
+  return withRetry(async () => {
+    const response = await fetch(input, init);
+    if (!response.ok) throw new Error(`http status ${response.status}`);
+    return response.json() as Promise<T>;
+  });
 };
