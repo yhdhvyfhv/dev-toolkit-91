@@ -1,38 +1,38 @@
-/**
- * gaming engine parameters for dev-toolkit-91
- */
+export type GameState = 'active' | 'paused' | 'loading' | 'crashed';
 
-export interface GameEngineConfig {
-  readonly maxEntities: number;
-  readonly tickRateHz: number;
-  readonly physicsEngine: 'cannon' | 'ammo' | 'custom';
-  readonly debugMode: boolean;
+export class ConfigError extends Error {
+  constructor(public code: string, message: string) {
+    super(`[dev-toolkit-91] ${message}`);
+    this.name = 'ConfigError';
+  }
 }
 
-/**
- * rigid defaults for high-performance simulation
- */
-export const DEFAULTS: GameEngineConfig = {
-  maxEntities: 1024,
-  tickRateHz: 60,
-  physicsEngine: 'custom',
-  debugMode: process.env.NODE_ENV !== 'production'
+export interface ToolkitConfig {
+  latencyThreshold: number;
+  maxPlayers: number;
+}
+
+export const validateConfig = (cfg: Partial<ToolkitConfig>): ToolkitConfig => {
+  const defaults: ToolkitConfig = { latencyThreshold: 150, maxPlayers: 64 };
+
+  try {
+    if (cfg.latencyThreshold !== undefined && (cfg.latencyThreshold < 0 || cfg.latencyThreshold > 1000)) {
+      throw new ConfigError('INVALID_LATENCY', 'Threshold must be between 0 and 1000ms');
+    }
+    if (cfg.maxPlayers !== undefined && (cfg.maxPlayers < 1 || cfg.maxPlayers > 128)) {
+      throw new ConfigError('INVALID_PLAYER_COUNT', 'Players must be between 1 and 128');
+    }
+    return { ...defaults, ...cfg } as ToolkitConfig;
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      console.error(`Runtime config fallback triggered: ${err.message}`);
+      return defaults;
+    }
+    throw err;
+  }
 };
 
-/**
- * factory for generating specialized engine constants
- */
-export const getEngineConfig = (override: Partial<GameEngineConfig>): GameEngineConfig => ({
-  ...DEFAULTS,
-  ...override
-});
-
-/**
- * bitmask flags for entity rendering behavior
- */
-export enum EntityFlags {
-  VISIBLE = 1 << 0,
-  COLLIDABLE = 1 << 1,
-  STATIC = 1 << 2,
-  SHADOW_CASTER = 1 << 3
-}
+export const getGlobalConfig = (raw: unknown): ToolkitConfig => {
+  if (typeof raw !== 'object' || raw === null) return validateConfig({});
+  return validateConfig(raw as ToolkitConfig);
+};
