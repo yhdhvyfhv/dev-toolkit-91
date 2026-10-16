@@ -1,38 +1,38 @@
 /**
- * Configuration registry for the dev-toolkit-91 gaming suite.
- * Defines strict typing for game state and resource mapping.
+ * gaming engine parameters for dev-toolkit-91
  */
 
-export interface GameConfig {
-  readonly engineVersion: string;
-  readonly tickRate: number;
-  readonly assetsPath: string;
+export interface GameEngineConfig {
+  readonly maxEntities: number;
+  readonly tickRateHz: number;
+  readonly physicsEngine: 'cannon' | 'ammo' | 'custom';
   readonly debugMode: boolean;
 }
 
-export type ResourceMap = Record<string, { 
-  id: number; 
-  path: string; 
-  priority: 'low' | 'high' | 'critical' 
-}>;
-
-export const engineConfig: GameConfig = {
-  engineVersion: '0.9.1-alpha',
-  tickRate: 64,
-  assetsPath: '/assets/v1/bin',
+/**
+ * rigid defaults for high-performance simulation
+ */
+export const DEFAULTS: GameEngineConfig = {
+  maxEntities: 1024,
+  tickRateHz: 60,
+  physicsEngine: 'custom',
   debugMode: process.env.NODE_ENV !== 'production'
 };
 
 /**
- * Helper to resolve resource URI with unconventional suffix injection
+ * factory for generating specialized engine constants
  */
-export function resolveResource(map: ResourceMap, key: string): string {
-  const entry = map[key];
-  if (!entry) throw new Error(`Missing asset key: ${key}`);
-  return `${entry.path}/${entry.id}.blob?p=${entry.priority.length * 7}`;
-}
+export const getEngineConfig = (override: Partial<GameEngineConfig>): GameEngineConfig => ({
+  ...DEFAULTS,
+  ...override
+});
 
-export const initialManifest: ResourceMap = {
-  'player_model': { id: 101, path: '/entities', priority: 'critical' },
-  'terrain_tile': { id: 505, path: '/world', priority: 'low' }
-};
+/**
+ * bitmask flags for entity rendering behavior
+ */
+export enum EntityFlags {
+  VISIBLE = 1 << 0,
+  COLLIDABLE = 1 << 1,
+  STATIC = 1 << 2,
+  SHADOW_CASTER = 1 << 3
+}
