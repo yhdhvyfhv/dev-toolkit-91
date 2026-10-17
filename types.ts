@@ -1,35 +1,36 @@
-export type GameEntity = {
-  id: string;
-  uuid: number;
-  health: number;
-  position: { x: number; y: number };
-  active: boolean;
+export type GameTick = number;
+export type BufferStrategy<T> = {
+  readonly cache: Map<string, T>;
+  process: (id: string, data: T) => T;
 };
 
-export type EngineState = 'idle' | 'running' | 'paused' | 'crashed';
+export class PerformanceBuffer<T> implements BufferStrategy<T> {
+  public readonly cache = new Map<string, T>();
+  private readonly maxLimit = 1024;
 
-export interface GameObject {
-  readonly id: string;
-  update(delta: number): void;
-  render(): void;
+  constructor(private readonly compute: (val: T) => T) {}
+
+  public process(id: string, data: T): T {
+    if (this.cache.size > this.maxLimit) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey) this.cache.delete(firstKey);
+    }
+
+    const cached = this.cache.get(id);
+    if (cached !== undefined) return cached;
+
+    const result = this.compute(data);
+    this.cache.set(id, result);
+    return result;
+  }
 }
 
-export type Vector2 = [number, number];
-
-export interface AssetManifest {
-  textures: Record<string, string>;
-  sounds: Record<string, string>;
-  loadOrder: string[];
+export interface EngineState {
+  readonly fps: number;
+  readonly latency: number;
+  readonly frameBuffer: PerformanceBuffer<GameTick>;
 }
 
-export type PhysicsConfig = {
-  gravity: number;
-  friction: number;
-  bounds: { width: number; height: number };
-};
-
-export const DEFAULT_CONFIG: PhysicsConfig = {
-  gravity: 9.81,
-  friction: 0.1,
-  bounds: { width: 1920, height: 1080 }
+export const createFrameOptimizer = (fn: (v: number) => number): PerformanceBuffer<number> => {
+  return new PerformanceBuffer(fn);
 };
