@@ -1,34 +1,27 @@
-export type RetryOptions = { maxRetries: number; baseDelay: number };
+import * as fs from 'fs';
+import * as path from 'path';
 
-export const withRetry = async <T>(
-  fn: () => Promise<T>,
-  { maxRetries = 3, baseDelay = 500 }: RetryOptions = { maxRetries: 3, baseDelay: 500 }
-): Promise<T> => {
-  let lastError: unknown;
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      if (attempt === maxRetries) break;
-      
-      const jitter = Math.random() * 200;
-      const delay = baseDelay * Math.pow(2, attempt) + jitter;
-      
-      await new Promise((resolve) => setTimeout(resolve, delay));
+interface LogConfig {
+  maxSize: number;
+  path: string;
+}
+
+export const createLogger = (config: LogConfig) => {
+  const logPath = path.resolve(config.path);
+
+  return (message: string) => {
+    const entry = `[${new Date().toISOString()}] ${message}\n`;
+    
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size > config.maxSize) {
+      const archive = `${logPath}.${Date.now()}.old`;
+      fs.renameSync(logPath, archive);
     }
-  }
-  
-  throw lastError instanceof Error 
-    ? new Error(`network failure after ${maxRetries} attempts: ${lastError.message}`) 
-    : lastError;
+
+    fs.appendFileSync(logPath, entry);
+  };
 };
 
-export const gameFetch = async <T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> => {
-  return withRetry(async () => {
-    const response = await fetch(input, init);
-    if (!response.ok) throw new Error(`http status ${response.status}`);
-    return response.json() as Promise<T>;
-  });
-};
+export const logger = createLogger({
+  maxSize: 1024 * 1024 * 5,
+  path: 'game-engine.log'
+});
