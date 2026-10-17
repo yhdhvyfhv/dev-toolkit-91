@@ -1,37 +1,35 @@
-export type GameTick = number;
-export type EntityId = string;
+export type GameEntity = {
+  id: string;
+  uuid: number;
+  health: number;
+  position: { x: number; y: number };
+  active: boolean;
+};
 
-export interface PerformanceBuffer {
-  readonly capacity: number;
-  readonly pointer: number;
-  readonly data: Float64Array;
+export type EngineState = 'idle' | 'running' | 'paused' | 'crashed';
+
+export interface GameObject {
+  readonly id: string;
+  update(delta: number): void;
+  render(): void;
 }
 
-export const createFrameBuffer = (capacity: number = 64): PerformanceBuffer => ({
-  capacity,
-  pointer: 0,
-  data: new Float64Array(capacity).fill(-1),
-});
+export type Vector2 = [number, number];
 
-export function recordFrameTime(buffer: PerformanceBuffer, duration: number): void {
-  buffer.data[buffer.pointer] = duration;
-  buffer.pointer = (buffer.pointer + 1) % buffer.capacity;
+export interface AssetManifest {
+  textures: Record<string, string>;
+  sounds: Record<string, string>;
+  loadOrder: string[];
 }
 
-export function getAverageLatency(buffer: PerformanceBuffer): number {
-  let sum = 0;
-  let count = 0;
-  for (let i = 0; i < buffer.capacity; i++) {
-    if (buffer.data[i] !== -1) {
-      sum += buffer.data[i];
-      count++;
-    }
-  }
-  return count > 0 ? sum / count : 0;
-}
+export type PhysicsConfig = {
+  gravity: number;
+  friction: number;
+  bounds: { width: number; height: number };
+};
 
-export type EngineState = {
-  readonly fps: number;
-  readonly frameLatency: PerformanceBuffer;
-  readonly memoryPressure: boolean;
+export const DEFAULT_CONFIG: PhysicsConfig = {
+  gravity: 9.81,
+  friction: 0.1,
+  bounds: { width: 1920, height: 1080 }
 };
