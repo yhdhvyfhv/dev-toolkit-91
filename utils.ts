@@ -1,27 +1,30 @@
-import * as fs from 'fs';
-import * as path from 'path';
+export type GameEntity = { id: string; state: 'active' | 'idle'; ticks: number };
 
-interface LogConfig {
-  maxSize: number;
-  path: string;
-}
-
-export const createLogger = (config: LogConfig) => {
-  const logPath = path.resolve(config.path);
-
-  return (message: string) => {
-    const entry = `[${new Date().toISOString()}] ${message}\n`;
-    
-    if (fs.existsSync(logPath) && fs.statSync(logPath).size > config.maxSize) {
-      const archive = `${logPath}.${Date.now()}.old`;
-      fs.renameSync(logPath, archive);
-    }
-
-    fs.appendFileSync(logPath, entry);
-  };
+export const sanitizeGameState = (entities: GameEntity[]): GameEntity[] => {
+  return entities.filter(e => e.ticks >= 0).map(e => ({ ...e, ticks: Math.floor(e.ticks) }));
 };
 
-export const logger = createLogger({
-  maxSize: 1024 * 1024 * 5,
-  path: 'game-engine.log'
+export const entityFactory = (id: string): GameEntity => ({
+  id,
+  state: 'idle',
+  ticks: 0
 });
+
+export const batchUpdate = <T>(items: T[], fn: (item: T) => T): T[] => {
+  const results: T[] = [];
+  for (let i = 0; i < items.length; i++) {
+    results.push(fn(items[i]));
+  }
+  return results;
+};
+
+export const throttleExecution = (ms: number) => {
+  let last = 0;
+  return (callback: () => void) => {
+    const now = Date.now();
+    if (now - last >= ms) {
+      callback();
+      last = now;
+    }
+  };
+};
