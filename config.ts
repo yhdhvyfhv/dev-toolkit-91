@@ -1,38 +1,32 @@
-export type GameState = 'active' | 'paused' | 'loading' | 'crashed';
-
-export class ConfigError extends Error {
-  constructor(public code: string, message: string) {
-    super(`[dev-toolkit-91] ${message}`);
-    this.name = 'ConfigError';
-  }
+export interface GameConfig {
+  renderScale: number;
+  maxFps: number;
+  enableVsync: boolean;
+  assetPath: string;
 }
 
-export interface ToolkitConfig {
-  latencyThreshold: number;
-  maxPlayers: number;
-}
-
-export const validateConfig = (cfg: Partial<ToolkitConfig>): ToolkitConfig => {
-  const defaults: ToolkitConfig = { latencyThreshold: 150, maxPlayers: 64 };
-
-  try {
-    if (cfg.latencyThreshold !== undefined && (cfg.latencyThreshold < 0 || cfg.latencyThreshold > 1000)) {
-      throw new ConfigError('INVALID_LATENCY', 'Threshold must be between 0 and 1000ms');
-    }
-    if (cfg.maxPlayers !== undefined && (cfg.maxPlayers < 1 || cfg.maxPlayers > 128)) {
-      throw new ConfigError('INVALID_PLAYER_COUNT', 'Players must be between 1 and 128');
-    }
-    return { ...defaults, ...cfg } as ToolkitConfig;
-  } catch (err) {
-    if (err instanceof ConfigError) {
-      console.error(`Runtime config fallback triggered: ${err.message}`);
-      return defaults;
-    }
-    throw err;
-  }
+const DEFAULTS: GameConfig = {
+  renderScale: 1.0,
+  maxFps: 60,
+  enableVsync: true,
+  assetPath: './assets'
 };
 
-export const getGlobalConfig = (raw: unknown): ToolkitConfig => {
-  if (typeof raw !== 'object' || raw === null) return validateConfig({});
-  return validateConfig(raw as ToolkitConfig);
+export const loadConfig = (userConfig: Partial<GameConfig> = {}): GameConfig => {
+  const config = { ...DEFAULTS, ...userConfig };
+
+  return Object.freeze({
+    ...config,
+    renderScale: Math.max(0.1, Math.min(config.renderScale, 4.0)),
+    maxFps: config.maxFps > 0 ? config.maxFps : 60
+  });
+};
+
+export const getEnvironmentConfig = (): GameConfig => {
+  const env = typeof process !== 'undefined' ? process.env : {};
+  return loadConfig({
+    renderScale: parseFloat(env.RENDER_SCALE || '') || undefined,
+    maxFps: parseInt(env.MAX_FPS || '') || undefined,
+    enableVsync: env.VSYNC === 'false' ? false : undefined
+  });
 };
