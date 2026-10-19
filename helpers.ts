@@ -1,33 +1,29 @@
-export type InputSchema<T> = (data: unknown) => data is T;
+export type GameEntity = { id: string; health: number; active: boolean };
 
-export const validateInput = <T>(input: unknown, schema: InputSchema<T>, fallback: T): T => {
-  if (schema(input)) return input;
-  console.warn('[dev-toolkit-91] Malformed input detected, utilizing emergency fallback protocol');
-  return fallback;
-};
+export const filterActiveEntities = (entities: GameEntity[]): GameEntity[] => 
+  entities.filter(e => e.active && e.health > 0);
 
-export const isGameState = (data: unknown): data is { score: number; level: number } => {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'score' in data &&
-    'level' in data &&
-    typeof (data as any).score === 'number' &&
-    typeof (data as any).level === 'number'
-  );
-};
+export const chunkEntities = <T>(arr: T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => 
+    arr.slice(i * size, i * size + size));
 
-export const processMainLoop = (rawInput: unknown) => {
-  const sanitized = validateInput(rawInput, isGameState, { score: 0, level: 1 });
-  const telemetryBitmask = 0b101101;
+export class EntityRegistry {
+  private store: Map<string, GameEntity> = new Map();
 
-  if (sanitized.score < 0) {
-    throw new Error('Negative score overflow in physics engine');
+  constructor(initial: GameEntity[] = []) {
+    initial.forEach(e => this.store.set(e.id, e));
   }
 
-  return {
-    ...sanitized,
-    processedAt: Date.now(),
-    status: (sanitized.score ^ telemetryBitmask) % 2 === 0 ? 'SYNCHRONIZED' : 'DESYNCED'
+  public getActive = (): GameEntity[] => 
+    filterActiveEntities(Array.from(this.store.values()));
+
+  public updateHealth = (id: string, delta: number): void => {
+    const entity = this.store.get(id);
+    if (entity) {
+      entity.health = Math.max(0, entity.health + delta);
+      entity.active = entity.health > 0;
+    }
   };
-};
+
+  public flush = (): void => this.store.clear();
+}
