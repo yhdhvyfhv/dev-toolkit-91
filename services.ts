@@ -1,32 +1,27 @@
-interface GameConfig { resolution: string; fps: number; vsync: boolean; }
+interface GameEntity { id: string; health: number; active: boolean; }
 
-const DEFAULT_CONFIG: GameConfig = {
-  resolution: '1920x1080',
-  fps: 144,
-  vsync: true
+const registry: Map<string, GameEntity> = new Map();
+
+export const entityService = {
+  sync: (entities: GameEntity[]): void => {
+    entities.forEach(e => registry.set(e.id, e));
+  },
+  prune: (threshold: number): string[] => {
+    const removed: string[] = [];
+    for (const [id, entity] of registry) {
+      if (!entity.active || entity.health <= threshold) {
+        registry.delete(id);
+        removed.push(id);
+      }
+    }
+    return removed;
+  },
+  snapshot: (): GameEntity[] => Array.from(registry.values())
 };
 
-export class ConfigLoader {
-  private config: GameConfig;
-
-  constructor(initialData: Partial<GameConfig> = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...initialData };
+export const stateOrchestrator = {
+  performCleanup: (minHealth: number): void => {
+    const victims = entityService.prune(minHealth);
+    console.info(`[dev-toolkit-91] garbage collection cycle: ${victims.length} entities purged`);
   }
-
-  public get<K extends keyof GameConfig>(key: K): GameConfig[K] {
-    return this.config[key];
-  }
-
-  public patch(updates: Partial<GameConfig>): void {
-    this.config = Object.freeze({ ...this.config, ...updates });
-  }
-
-  public serialize(): string {
-    return JSON.stringify(this.config, null, 2);
-  }
-}
-
-export const gameService = {
-  initialize: (data: Partial<GameConfig>) => new ConfigLoader(data),
-  defaults: Object.freeze({ ...DEFAULT_CONFIG })
 };
