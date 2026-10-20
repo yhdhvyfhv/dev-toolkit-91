@@ -1,32 +1,65 @@
-export interface GameConfig {
-  renderScale: number;
-  maxFps: number;
-  enableVsync: boolean;
-  assetPath: string;
+export interface GameSettings {
+  targetFps: number;
+  fov: number;
+  rayTracing: boolean;
+  shadowQuality: 'low' | 'medium' | 'high' | 'ultra';
+  audioChannels: number;
+  customKeybinds: Record<string, string>;
 }
 
-const DEFAULTS: GameConfig = {
-  renderScale: 1.0,
-  maxFps: 60,
-  enableVsync: true,
-  assetPath: './assets'
+const DEFAULT_GAMING_CONFIG: GameSettings = {
+  targetFps: 144,
+  fov: 90,
+  rayTracing: false,
+  shadowQuality: 'high',
+  audioChannels: 64,
+  customKeybinds: {
+    jump: 'Space',
+    crouch: 'LeftControl',
+    reload: 'KeyR',
+  },
 };
 
-export const loadConfig = (userConfig: Partial<GameConfig> = {}): GameConfig => {
-  const config = { ...DEFAULTS, ...userConfig };
-
-  return Object.freeze({
-    ...config,
-    renderScale: Math.max(0.1, Math.min(config.renderScale, 4.0)),
-    maxFps: config.maxFps > 0 ? config.maxFps : 60
-  });
+type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
 };
 
-export const getEnvironmentConfig = (): GameConfig => {
-  const env = typeof process !== 'undefined' ? process.env : {};
-  return loadConfig({
-    renderScale: parseFloat(env.RENDER_SCALE || '') || undefined,
-    maxFps: parseInt(env.MAX_FPS || '') || undefined,
-    enableVsync: env.VSYNC === 'false' ? false : undefined
-  });
-};
+export class GameConfigLoader {
+  private activeConfig: GameSettings;
+
+  constructor(userOverrides: DeepPartial<GameSettings> = {}) {
+    this.activeConfig = this.hydrateDefaults(DEFAULT_GAMING_CONFIG, userOverrides);
+  }
+
+  private hydrateDefaults<T extends Record<string, any>>(defaults: T, overrides: Record<string, any>): T {
+    const result = { ...defaults };
+    for (const key of Object.keys(overrides)) {
+      const val = overrides[key];
+      if (val !== undefined && val !== null) {
+        if (typeof val === 'object' && !Array.isArray(val) && typeof defaults[key] === 'object') {
+          result[key as keyof T] = this.hydrateDefaults(defaults[key], val);
+        } else {
+          result[key as keyof T] = val;
+        }
+      }
+    }
+    return result;
+  }
+
+  public getProxy(): GameSettings {
+    return new Proxy(this.activeConfig, {
+      get: (target, prop: string | symbol) => {
+        if (typeof prop === 'string' && !(prop in target)) {
+          console.warn(`[dev-toolkit-91] Accessing unconfigured setting: ${String(prop)}`);
+        }
+        return Reflect.get(target, prop);
+      },
+      set: (target, prop: string | symbol, value) => {
+        if (prop === 'targetFps' && (typeof value !== 'number' || value < 30 || value > 360)) {
+          throw new RangeError('[dev-toolkit-91] Target FPS must be between 30 and 360');
+        }
+        return Reflect.set(target, prop, value);
+      },
+    });
+  }
+}
