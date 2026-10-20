@@ -1,30 +1,40 @@
-export type GameEntity = { id: string; state: 'active' | 'idle'; ticks: number };
-
-export const sanitizeGameState = (entities: GameEntity[]): GameEntity[] => {
-  return entities.filter(e => e.ticks >= 0).map(e => ({ ...e, ticks: Math.floor(e.ticks) }));
-};
-
-export const entityFactory = (id: string): GameEntity => ({
-  id,
-  state: 'idle',
-  ticks: 0
-});
-
-export const batchUpdate = <T>(items: T[], fn: (item: T) => T): T[] => {
-  const results: T[] = [];
-  for (let i = 0; i < items.length; i++) {
-    results.push(fn(items[i]));
-  }
-  return results;
-};
-
-export const throttleExecution = (ms: number) => {
-  let last = 0;
-  return (callback: () => void) => {
+export const memoizeCompute = <T, R>(fn: (arg: T) => R, ttl: number = 5000) => {
+  const cache = new Map<T, { val: R; expiry: number }>();
+  return (arg: T): R => {
     const now = Date.now();
-    if (now - last >= ms) {
-      callback();
-      last = now;
-    }
+    const cached = cache.get(arg);
+    if (cached && cached.expiry > now) return cached.val;
+    const result = fn(arg);
+    cache.set(arg, { val: result, expiry: now + ttl });
+    if (cache.size > 100) cache.delete(cache.keys().next().value);
+    return result;
   };
+};
+
+export const batchUpdate = <T>(items: T[], process: (batch: T[]) => void, size: number = 50) => {
+  for (let i = 0; i < items.length; i += size) {
+    const slice = items.slice(i, i + size);
+    setTimeout(() => process(slice), 0);
+  }
+};
+
+export const fastHash = (str: string): number => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+};
+
+export type PerfContext = {
+  start: number;
+  label: string;
+};
+
+export const trackPerformance = (label: string): PerfContext => ({ start: performance.now(), label });
+
+export const endPerformance = (ctx: PerfContext): void => {
+  const duration = performance.now() - ctx.start;
+  if (duration > 16.6) console.warn(`[dev-toolkit-91] Frame drop detected in ${ctx.label}: ${duration.toFixed(2)}ms`);
 };
