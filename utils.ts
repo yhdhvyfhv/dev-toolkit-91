@@ -1,40 +1,50 @@
-export const memoizeCompute = <T, R>(fn: (arg: T) => R, ttl: number = 5000) => {
-  const cache = new Map<T, { val: R; expiry: number }>();
-  return (arg: T): R => {
-    const now = Date.now();
-    const cached = cache.get(arg);
-    if (cached && cached.expiry > now) return cached.val;
-    const result = fn(arg);
-    cache.set(arg, { val: result, expiry: now + ttl });
-    if (cache.size > 100) cache.delete(cache.keys().next().value);
-    return result;
-  };
-};
+type TickCallback = () => void;
 
-export const batchUpdate = <T>(items: T[], process: (batch: T[]) => void, size: number = 50) => {
-  for (let i = 0; i < items.length; i += size) {
-    const slice = items.slice(i, i + size);
-    setTimeout(() => process(slice), 0);
+class PerformanceManager {
+  private queue: TickCallback[] = [];
+  private isProcessing = false;
+
+  constructor(private budgetMs: number = 8) {}
+
+  public schedule(task: TickCallback): void {
+    this.queue.push(task);
+    this.trigger();
   }
-};
 
-export const fastHash = (str: string): number => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
+  private trigger(): void {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+    requestIdleCallback((deadline) => this.flush(deadline));
   }
-  return hash;
-};
 
-export type PerfContext = {
-  start: number;
-  label: string;
-};
+  private flush(deadline: IdleDeadline): void {
+    while (deadline.timeRemaining() > this.budgetMs && this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (task) task();
+    }
+    if (this.queue.length > 0) {
+      requestIdleCallback((d) => this.flush(d));
+    } else {
+      this.isProcessing = false;
+    }
+  }
+}
 
-export const trackPerformance = (label: string): PerfContext => ({ start: performance.now(), label });
+export const gameTaskScheduler = new PerformanceManager();
 
-export const endPerformance = (ctx: PerfContext): void => {
-  const duration = performance.now() - ctx.start;
-  if (duration > 16.6) console.warn(`[dev-toolkit-91] Frame drop detected in ${ctx.label}: ${duration.toFixed(2)}ms`);
+export const memoizeState = <T extends object>(target: T): T => {
+  const cache = new Map<keyof T, unknown>();
+  return new Proxy(target, {
+    get(obj, prop: keyof T) {
+      if (!cache.has(prop)) {
+        cache.set(prop, obj[prop]);
+      }
+      return cache.get(prop);
+    },
+    set(obj, prop: keyof T, value: any) {
+      cache.delete(prop);
+      obj[prop] = value;
+      return true;
+    }
+  });
 };
