@@ -1,29 +1,42 @@
-export type GameState = 'lobby' | 'active' | 'paused' | 'ended';
-
-export interface Entity {
-  readonly id: string;
-  position: { x: number; y: number };
-  velocity: { dx: number; dy: number };
-  metadata: Record<string, unknown>;
+export interface GameState {
+  entities: Map<string, Entity>;
+  tickRate: number;
 }
 
-export type EngineConfig = {
-  tickRate: number;
-  maxPlayers: number;
-  physicsEngine: 'cannon' | 'ammo';
+export interface Entity {
+  id: string;
+  pos: Float32Array;
+  velocity: Float32Array;
+}
+
+export class SpatialCache<T> {
+  private storage: Record<number, T[]> = {};
+  private hash = (n: number) => Math.floor(n / 64);
+
+  insert(x: number, item: T) {
+    const key = this.hash(x);
+    (this.storage[key] ||= []).push(item);
+  }
+
+  query(x: number): T[] {
+    return this.storage[this.hash(x)] || [];
+  }
+
+  clear() {
+    this.storage = {};
+  }
+}
+
+export type EngineMetrics = {
+  frameTime: number;
+  memoryUsage: number;
+  activeEntities: number;
 };
 
-export type EventHandler<T = any> = (event: T) => void | Promise<void>;
-
-export const DEFAULT_ENTITY_METADATA = { spawnedAt: Date.now(), persistent: false };
-
-export const calculateNextPosition = (entity: Entity, dt: number): { x: number; y: number } => ({
-  x: entity.position.x + entity.velocity.dx * dt,
-  y: entity.position.y + entity.velocity.dy * dt
-});
-
-export type PlayerInput = {
-  command: 'jump' | 'shoot' | 'crouch';
-  timestamp: number;
-  sequence: bigint;
+export const optimizeEntityAccess = <T>(entities: T[], accessor: (e: T) => number): SpatialCache<T> => {
+  const cache = new SpatialCache<T>();
+  for (const entity of entities) {
+    cache.insert(accessor(entity), entity);
+  }
+  return cache;
 };
