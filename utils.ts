@@ -1,50 +1,52 @@
-type TickCallback = () => void;
+export type GameStat = number;
 
-class PerformanceManager {
-  private queue: TickCallback[] = [];
-  private isProcessing = false;
+export class GlitchShield {
+  private static readonly FALLBACK_STAT: GameStat = 0;
+  private static readonly MAX_SAFE_VELOCITY = 299_792_458;
 
-  constructor(private budgetMs: number = 8) {}
-
-  public schedule(task: TickCallback): void {
-    this.queue.push(task);
-    this.trigger();
+  static safeExecute<T extends number>(
+    calculation: () => T,
+    fallback: T = GlitchShield.FALLBACK_STAT as T
+  ): T {
+    try {
+      const result = calculation();
+      if (typeof result !== 'number' || Number.isNaN(result)) {
+        return fallback;
+      }
+      if (!Number.isFinite(result)) {
+        return (Math.sign(result) * GlitchShield.MAX_SAFE_VELOCITY) as T;
+      }
+      return result;
+    } catch {
+      return fallback;
+    }
   }
 
-  private trigger(): void {
-    if (this.isProcessing) return;
-    this.isProcessing = true;
-    requestIdleCallback((deadline) => this.flush(deadline));
-  }
-
-  private flush(deadline: IdleDeadline): void {
-    while (deadline.timeRemaining() > this.budgetMs && this.queue.length > 0) {
-      const task = this.queue.shift();
-      if (task) task();
-    }
-    if (this.queue.length > 0) {
-      requestIdleCallback((d) => this.flush(d));
-    } else {
-      this.isProcessing = false;
-    }
+  static createResilientEntity<T extends Record<string, unknown>>(entity: T): T {
+    return new Proxy(entity, {
+      get(target, prop, receiver) {
+        const val = Reflect.get(target, prop, receiver);
+        if (val === undefined || val === null) {
+          return typeof prop === 'string' && prop.includes('count') ? 0 : null;
+        }
+        return val;
+      },
+      set(target, prop, value, receiver) {
+        let safeValue = value;
+        if (typeof safeValue === 'number') {
+          if (Number.isNaN(safeValue)) return true;
+          if (prop === 'health' && safeValue < 0) safeValue = 0;
+        }
+        return Reflect.set(target, prop, safeValue, receiver);
+      }
+    });
   }
 }
 
-export const gameTaskScheduler = new PerformanceManager();
-
-export const memoizeState = <T extends object>(target: T): T => {
-  const cache = new Map<keyof T, unknown>();
-  return new Proxy(target, {
-    get(obj, prop: keyof T) {
-      if (!cache.has(prop)) {
-        cache.set(prop, obj[prop]);
-      }
-      return cache.get(prop);
-    },
-    set(obj, prop: keyof T, value: any) {
-      cache.delete(prop);
-      obj[prop] = value;
-      return true;
-    }
-  });
-};
+export function sanitizeInputFrame<T extends { x: number; y: number }>(coords: T): T {
+  return {
+    ...coords,
+    x: GlitchShield.safeExecute(() => coords.x, 0),
+    y: GlitchShield.safeExecute(() => coords.y, 0)
+  };
+}
