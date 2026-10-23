@@ -1,27 +1,32 @@
-interface GameEntity { id: string; health: number; active: boolean; }
+export interface FrameBuffer { data: Float32Array; tick: number; }
 
-const registry: Map<string, GameEntity> = new Map();
+const CACHE_CAPACITY = 1024;
+const ringBuffer = new Float32Array(CACHE_CAPACITY * 16);
+let cursor = 0;
 
-export const entityService = {
-  sync: (entities: GameEntity[]): void => {
-    entities.forEach(e => registry.set(e.id, e));
-  },
-  prune: (threshold: number): string[] => {
-    const removed: string[] = [];
-    for (const [id, entity] of registry) {
-      if (!entity.active || entity.health <= threshold) {
-        registry.delete(id);
-        removed.push(id);
-      }
-    }
-    return removed;
-  },
-  snapshot: (): GameEntity[] => Array.from(registry.values())
-};
-
-export const stateOrchestrator = {
-  performCleanup: (minHealth: number): void => {
-    const victims = entityService.prune(minHealth);
-    console.info(`[dev-toolkit-91] garbage collection cycle: ${victims.length} entities purged`);
+export const computePhysicsBatch = (entities: Float32Array[]): Float32Array => {
+  const batch = new Float32Array(entities.length * 16);
+  for (let i = 0; i < entities.length; i++) {
+    const offset = i * 16;
+    batch.set(entities[i], offset);
   }
+  return batch;
 };
+
+export const memoizeTransform = (id: string, transform: Float32Array): Float32Array => {
+  const target = cursor % CACHE_CAPACITY;
+  const start = target * 16;
+  ringBuffer.set(transform, start);
+  cursor++;
+  return ringBuffer.subarray(start, start + 16);
+};
+
+export const flushBuffer = (): void => {
+  ringBuffer.fill(0);
+  cursor = 0;
+};
+
+export const getEngineTelemetry = () => ({
+  usage: cursor / CACHE_CAPACITY,
+  active: cursor > 0
+});
