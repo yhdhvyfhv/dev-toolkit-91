@@ -1,29 +1,65 @@
-export type GameEntity = { id: string; health: number; active: boolean };
+export interface Vector2D {
+  x: number;
+  y: number;
+}
 
-export const filterActiveEntities = (entities: GameEntity[]): GameEntity[] => 
-  entities.filter(e => e.active && e.health > 0);
+export function interleaveBits(x: number, y: number): number {
+  let z = 0;
+  const clampedX = Math.max(0, Math.min(x, 0xffff)) | 0;
+  const clampedY = Math.max(0, Math.min(y, 0xffff)) | 0;
+  for (let i = 0; i < 16; i++) {
+    z |= ((clampedX & (1 << i)) << i) | ((clampedY & (1 << i)) << (i + 1));
+  }
+  return z >>> 0;
+}
 
-export const chunkEntities = <T>(arr: T[], size: number): T[][] =>
-  Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => 
-    arr.slice(i * size, i * size + size));
+export class EntityState {
+  private flags: number;
 
-export class EntityRegistry {
-  private store: Map<string, GameEntity> = new Map();
-
-  constructor(initial: GameEntity[] = []) {
-    initial.forEach(e => this.store.set(e.id, e));
+  constructor(initialFlags: number = 0) {
+    this.flags = initialFlags;
   }
 
-  public getActive = (): GameEntity[] => 
-    filterActiveEntities(Array.from(this.store.values()));
+  toggle(bitMask: number, enabled?: boolean): this {
+    const shouldEnable = enabled ?? ((this.flags & bitMask) === 0);
+    this.flags = shouldEnable ? (this.flags | bitMask) : (this.flags & ~bitMask);
+    return this;
+  }
 
-  public updateHealth = (id: string, delta: number): void => {
-    const entity = this.store.get(id);
-    if (entity) {
-      entity.health = Math.max(0, entity.health + delta);
-      entity.active = entity.health > 0;
+  has(bitMask: number): boolean {
+    return (this.flags & bitMask) === bitMask;
+  }
+
+  get raw(): number {
+    return this.flags;
+  }
+}
+
+export class FrameSmoother {
+  private samples: Float32Array;
+  private pointer: number = 0;
+
+  constructor(sampleCount = 10, defaultDelta = 0.016) {
+    this.samples = new Float32Array(sampleCount).fill(defaultDelta);
+  }
+
+  push(dt: number): number {
+    this.samples[this.pointer] = dt;
+    this.pointer = (this.pointer + 1) % this.samples.length;
+    let sum = 0;
+    for (let i = 0; i < this.samples.length; i++) {
+      sum += this.samples[i];
     }
-  };
+    return sum / this.samples.length;
+  }
+}
 
-  public flush = (): void => this.store.clear();
+export function createFastRng(seed: number): () => number {
+  let s = (seed || 1) >>> 0;
+  return () => {
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    return (s >>> 0) / 4294967296;
+  };
 }
