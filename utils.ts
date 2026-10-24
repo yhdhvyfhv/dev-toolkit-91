@@ -1,52 +1,48 @@
-export type GameStat = number;
+export type GlitchContext = {
+  tick: number;
+  subsystem: string;
+  error: Error;
+};
 
-export class GlitchShield {
-  private static readonly FALLBACK_STAT: GameStat = 0;
-  private static readonly MAX_SAFE_VELOCITY = 299_792_458;
+export type RecoveryAction<T> = (err: Error, context: GlitchContext) => T | null;
 
-  static safeExecute<T extends number>(
-    calculation: () => T,
-    fallback: T = GlitchShield.FALLBACK_STAT as T
+export class FrameBoundaryGuard {
+  private tickCount = 0;
+  private glitchLog: GlitchContext[] = [];
+
+  constructor(private readonly maxHistory: number = 50) {}
+
+  public executeFrameStep<T>(
+    subsystem: string,
+    stepFn: () => T,
+    recovery: RecoveryAction<T>,
+    fallback: T
   ): T {
+    this.tickCount++;
     try {
-      const result = calculation();
-      if (typeof result !== 'number' || Number.isNaN(result)) {
-        return fallback;
-      }
-      if (!Number.isFinite(result)) {
-        return (Math.sign(result) * GlitchShield.MAX_SAFE_VELOCITY) as T;
+      const result = stepFn();
+      if (result === undefined || result === null || (typeof result === 'number' && Number.isNaN(result))) {
+        throw new Error(`Invalid evaluation output: ${String(result)}`);
       }
       return result;
-    } catch {
-      return fallback;
+    } catch (err) {
+      const glitch: GlitchContext = {
+        tick: this.tickCount,
+        subsystem,
+        error: err instanceof Error ? err : new Error(String(err))
+      };
+
+      if (this.glitchLog.length >= this.maxHistory) {
+        this.glitchLog.shift();
+      }
+      this.glitchLog.push(glitch);
+
+      const recovered = recovery(glitch.error, glitch);
+      return recovered !== null ? recovered : fallback;
     }
   }
 
-  static createResilientEntity<T extends Record<string, unknown>>(entity: T): T {
-    return new Proxy(entity, {
-      get(target, prop, receiver) {
-        const val = Reflect.get(target, prop, receiver);
-        if (val === undefined || val === null) {
-          return typeof prop === 'string' && prop.includes('count') ? 0 : null;
-        }
-        return val;
-      },
-      set(target, prop, value, receiver) {
-        let safeValue = value;
-        if (typeof safeValue === 'number') {
-          if (Number.isNaN(safeValue)) return true;
-          if (prop === 'health' && safeValue < 0) safeValue = 0;
-        }
-        return Reflect.set(target, prop, safeValue, receiver);
-      }
-    });
+  public getGlitchHistory(): readonly GlitchContext[] {
+    return Object.freeze([...this.glitchLog]);
   }
-}
-
-export function sanitizeInputFrame<T extends { x: number; y: number }>(coords: T): T {
-  return {
-    ...coords,
-    x: GlitchShield.safeExecute(() => coords.x, 0),
-    y: GlitchShield.safeExecute(() => coords.y, 0)
-  };
 }
