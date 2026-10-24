@@ -1,48 +1,35 @@
-export type GameTick = number;
+export type GameState = 'active' | 'paused' | 'error' | 'loading';
 
-export interface PerformanceBuffer<T> {
-  data: Float64Array;
-  cursor: number;
-  readonly capacity: number;
-  push(val: T): void;
-  mean(): number;
-}
-
-export class RollingLatencyMonitor implements PerformanceBuffer<number> {
-  public data: Float64Array;
-  public cursor: number = 0;
-
-  constructor(public readonly capacity: number = 1024) {
-    this.data = new Float64Array(capacity);
-  }
-
-  push(val: number): void {
-    this.data[this.cursor] = val;
-    this.cursor = (this.cursor + 1) % this.capacity;
-  }
-
-  mean(): number {
-    let sum = 0;
-    for (let i = 0; i < this.capacity; i++) {
-      sum += this.data[i];
-    }
-    return sum / this.capacity;
+export class GamingEngineError extends Error {
+  constructor(public code: number, message: string, public recoveryData?: unknown) {
+    super(`[Code ${code}] ${message}`);
+    Object.setPrototypeOf(this, GamingEngineError.prototype);
   }
 }
 
-export type MemorySnapshot = {
-  heapUsed: number;
-  tickRate: GameTick;
-  timestamp: number;
+export const catchBoundary = <T>(fn: () => T, fallback: T): T => {
+  try {
+    return fn();
+  } catch (err) {
+    console.error('Recovering from edge state:', err);
+    return fallback;
+  }
 };
 
-export const optimizeBuffer = (size: number): Float64Array => new Float64Array(size);
+export interface AsyncResult<T> {
+  value: T | null;
+  error: GamingEngineError | null;
+}
 
-export const fastAverage = (buffer: Float64Array): number => {
-  const len = buffer.length;
-  let total = 0;
-  for (let i = 0; i < len; i += 4) {
-    total += buffer[i] + (buffer[i + 1] || 0) + (buffer[i + 2] || 0) + (buffer[i + 3] || 0);
+export const safeExecute = async <T>(task: () => Promise<T>, defaultValue: T): Promise<AsyncResult<T>> => {
+  try {
+    return { value: await task(), error: null };
+  } catch (e) {
+    const err = e instanceof GamingEngineError ? e : new GamingEngineError(500, 'Unmapped panic');
+    return { value: defaultValue, error: err };
   }
-  return total / len;
+};
+
+export const assertDomain = (val: number, min: number, max: number): number => {
+  return val < min ? min : val > max ? max : val;
 };
