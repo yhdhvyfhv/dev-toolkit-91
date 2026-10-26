@@ -1,65 +1,38 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+const CACHE_SIZE_LIMIT = 1000;
+const memoCache = new Map<string, any>();
+const keys: string[] = [];
 
-export interface LogEvent {
-  tick: number;
-  level: 'INFO' | 'WARN' | 'CRITICAL' | 'LOOT';
-  message: string;
-  payload?: Record<string, unknown>;
+export function memoizeHeavyCalculation<T>(fn: (...args: any[]) => T, ...args: any[]): T {
+  const key = JSON.stringify(args);
+  if (memoCache.has(key)) {
+    return memoCache.get(key);
+  }
+  const result = fn(...args);
+  if (keys.length >= CACHE_SIZE_LIMIT) {
+    const oldestKey = keys.shift();
+    if (oldestKey) memoCache.delete(oldestKey);
+  }
+  memoCache.set(key, result);
+  keys.push(key);
+  return result;
 }
 
-export class RotatingGameLogger {
-  private currentBuffer: string[] = [];
-  private sessionIndex = 0;
-  private currentTick = 0;
-
-  constructor(
-    private readonly logDir: string,
-    private readonly maxEntriesPerFile: number = 100,
-    private readonly maxArchives: number = 5
-  ) {
-    if (!fs.existsSync(this.logDir)) {
-      fs.mkdirSync(this.logDir, { recursive: true });
+export const batchUpdate = <T>(items: T[], processor: (batch: T[]) => void, size: number = 50): void => {
+  let index = 0;
+  const run = () => {
+    const deadline = performance.now() + 16;
+    while (index < items.length && performance.now() < deadline) {
+      processor(items.slice(index, index + size));
+      index += size;
     }
-  }
-
-  public record(level: LogEvent['level'], message: string, payload?: Record<string, unknown>): void {
-    this.currentTick++;
-    const timestamp = new Date().toISOString();
-    const details = payload ? JSON.stringify(payload) : '';
-    const formatted = `[TICK:${this.currentTick.toString().padStart(6, '0')}][${timestamp}][${level}] ${message} ${details}`;
-
-    this.currentBuffer.push(formatted.trim());
-
-    if (this.currentBuffer.length >= this.maxEntriesPerFile) {
-      this.rotateSession();
+    if (index < items.length) {
+      requestAnimationFrame(run);
     }
-  }
+  };
+  requestAnimationFrame(run);
+};
 
-  private rotateSession(): void {
-    const filePath = path.join(this.logDir, `match_log_${Date.now()}_rev${this.sessionIndex}.log`);
-    fs.writeFileSync(filePath, this.currentBuffer.join('\n'), 'utf-8');
-    this.currentBuffer = [];
-    this.sessionIndex++;
-
-    this.pruneOldLogs();
-  }
-
-  private pruneOldLogs(): void {
-    const files = fs.readdirSync(this.logDir)
-      .filter((f) => f.startsWith('match_log_') && f.endsWith('.log'))
-      .map((f) => path.join(this.logDir, f))
-      .sort((a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs);
-
-    while (files.length > this.maxArchives) {
-      const oldest = files.shift();
-      if (oldest) fs.unlinkSync(oldest);
-    }
-  }
-
-  public flush(): void {
-    if (this.currentBuffer.length > 0) {
-      this.rotateSession();
-    }
-  }
-}
+export const getPerformanceStats = () => ({
+  cacheEntries: memoCache.size,
+  memoryFootprint: JSON.stringify(Array.from(memoCache.keys())).length
+});
