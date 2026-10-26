@@ -1,38 +1,59 @@
-const CACHE_SIZE_LIMIT = 1000;
-const memoCache = new Map<string, any>();
-const keys: string[] = [];
-
-export function memoizeHeavyCalculation<T>(fn: (...args: any[]) => T, ...args: any[]): T {
-  const key = JSON.stringify(args);
-  if (memoCache.has(key)) {
-    return memoCache.get(key);
-  }
-  const result = fn(...args);
-  if (keys.length >= CACHE_SIZE_LIMIT) {
-    const oldestKey = keys.shift();
-    if (oldestKey) memoCache.delete(oldestKey);
-  }
-  memoCache.set(key, result);
-  keys.push(key);
-  return result;
-}
-
-export const batchUpdate = <T>(items: T[], processor: (batch: T[]) => void, size: number = 50): void => {
-  let index = 0;
-  const run = () => {
-    const deadline = performance.now() + 16;
-    while (index < items.length && performance.now() < deadline) {
-      processor(items.slice(index, index + size));
-      index += size;
-    }
-    if (index < items.length) {
-      requestAnimationFrame(run);
-    }
-  };
-  requestAnimationFrame(run);
+export type GameEntity = {
+  id: string;
+  position: [number, number, number];
+  health: number;
+  stamina: number;
+  isAlive: boolean;
 };
 
-export const getPerformanceStats = () => ({
-  cacheEntries: memoCache.size,
-  memoryFootprint: JSON.stringify(Array.from(memoCache.keys())).length
-});
+export type SanitizeResult<T> =
+  | { success: true; data: T; recovered: false }
+  | { success: true; data: T; recovered: true; anomaly: string }
+  | { success: false; error: Error };
+
+export class ResilienceKernel {
+  private maxDeltaThresholdMs = 250;
+
+  public sanitizeFrameDelta(deltaMs: number): number {
+    if (!Number.isFinite(deltaMs) || deltaMs < 0) {
+      return 16.667;
+    }
+    if (deltaMs > this.maxDeltaThresholdMs) {
+      return this.maxDeltaThresholdMs;
+    }
+    return deltaMs;
+  }
+
+  public safeMutateEntity<T extends GameEntity>(
+    entity: T,
+    mutationFn: (draft: T) => void
+  ): SanitizeResult<T> {
+    const snapshot = JSON.stringify(entity);
+    try {
+      const draft = JSON.parse(snapshot) as T;
+      mutationFn(draft);
+
+      const [x, y, z] = draft.position;
+      if (![x, y, z].every(Number.isFinite)) {
+        draft.position = entity.position;
+        return {
+          success: true,
+          data: draft,
+          recovered: true,
+          anomaly: `Non-finite coordinate detected on entity ${entity.id}`
+        };
+      }
+
+      if (isNaN(draft.health) || draft.health < 0) draft.health = 0;
+      if (isNaN(draft.stamina) || draft.stamina < 0) draft.stamina = 0;
+      draft.isAlive = draft.health > 0;
+
+      return { success: true, data: draft, recovered: false };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err : new Error(String(err))
+      };
+    }
+  }
+}
