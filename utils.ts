@@ -1,59 +1,33 @@
-export type GameEntity = {
-  id: string;
-  position: [number, number, number];
-  health: number;
-  stamina: number;
-  isAlive: boolean;
+export type LootTable<T> = Map<number, T>;
+
+export const rollLoot = <T>(table: LootTable<T>): T | null => {
+  const weights = Array.from(table.keys());
+  const totalWeight = weights.reduce((acc, w) => acc + w, 0);
+  let random = Math.random() * totalWeight;
+
+  for (const [weight, item] of table.entries()) {
+    random -= weight;
+    if (random <= 0) return item;
+  }
+
+  return null;
 };
 
-export type SanitizeResult<T> =
-  | { success: true; data: T; recovered: false }
-  | { success: true; data: T; recovered: true; anomaly: string }
-  | { success: false; error: Error };
-
-export class ResilienceKernel {
-  private maxDeltaThresholdMs = 250;
-
-  public sanitizeFrameDelta(deltaMs: number): number {
-    if (!Number.isFinite(deltaMs) || deltaMs < 0) {
-      return 16.667;
+export const createLevelMultiplier = (base: number, growth: number) => {
+  const memo = new Map<number, number>();
+  return (level: number): number => {
+    if (!memo.has(level)) {
+      memo.set(level, base * Math.pow(1 + growth, level - 1));
     }
-    if (deltaMs > this.maxDeltaThresholdMs) {
-      return this.maxDeltaThresholdMs;
-    }
-    return deltaMs;
-  }
+    return memo.get(level)!;
+  };
+};
 
-  public safeMutateEntity<T extends GameEntity>(
-    entity: T,
-    mutationFn: (draft: T) => void
-  ): SanitizeResult<T> {
-    const snapshot = JSON.stringify(entity);
-    try {
-      const draft = JSON.parse(snapshot) as T;
-      mutationFn(draft);
+export const clamp = (val: number, min: number, max: number): number => 
+  Math.min(Math.max(val, min), max);
 
-      const [x, y, z] = draft.position;
-      if (![x, y, z].every(Number.isFinite)) {
-        draft.position = entity.position;
-        return {
-          success: true,
-          data: draft,
-          recovered: true,
-          anomaly: `Non-finite coordinate detected on entity ${entity.id}`
-        };
-      }
-
-      if (isNaN(draft.health) || draft.health < 0) draft.health = 0;
-      if (isNaN(draft.stamina) || draft.stamina < 0) draft.stamina = 0;
-      draft.isAlive = draft.health > 0;
-
-      return { success: true, data: draft, recovered: false };
-    } catch (err) {
-      return {
-        success: false,
-        error: err instanceof Error ? err : new Error(String(err))
-      };
-    }
-  }
-}
+export const formatTimestamp = (ms: number): string => {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
