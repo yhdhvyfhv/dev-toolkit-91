@@ -1,33 +1,31 @@
-export type LootTable<T> = Array<{ item: T; weight: number }>;
+export type GameResult<T> = { success: true; data: T } | { success: false; error: string; code: number };
 
-export const rollWeighted = <T>(table: LootTable<T>): T => {
-  const total = table.reduce((sum, entry) => sum + entry.weight, 0);
-  let threshold = Math.random() * total;
-  for (const entry of table) {
-    threshold -= entry.weight;
-    if (threshold <= 0) return entry.item;
+export const safeExecute = async <T>(task: () => Promise<T>, fallback: T): Promise<GameResult<T>> => {
+  try {
+    const data = await task();
+    return { success: true, data };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown engine failure';
+    const code = (err as any)?.code ?? 500;
+    console.error(`[dev-toolkit-91] Execution crashed: ${message}`);
+    return { success: false, error: message, code };
   }
-  return table[table.length - 1].item;
 };
 
-export const formatTicks = (ticks: number): string => {
-  const seconds = Math.floor(ticks / 60);
-  const remainder = ticks % 60;
-  return `${seconds.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`;
+export const validateGameState = (state: unknown): boolean => {
+  const isValid = state !== null && typeof state === 'object' && 'session' in state;
+  if (!isValid) throw { message: 'Invalid payload structure', code: 422 };
+  return true;
 };
 
-export const throttleAction = <T extends (...args: any[]) => void>(fn: T, cooldown: number) => {
-  let lastExec = 0;
-  return (...args: Parameters<T>) => {
-    const now = Date.now();
-    if (now - lastExec >= cooldown) {
-      lastExec = now;
-      fn(...args);
+export const retryOperation = async <T>(fn: () => Promise<T>, attempts: number = 3): Promise<T> => {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === attempts - 1) throw e;
+      await new Promise((res) => setTimeout(res, Math.pow(2, i) * 100));
     }
-  };
-};
-
-export const normalizeVector = (x: number, y: number): [number, number] => {
-  const len = Math.sqrt(x * x + y * y);
-  return len === 0 ? [0, 0] : [x / len, y / len];
+  }
+  throw new Error('Maximum retries exceeded');
 };
