@@ -1,32 +1,33 @@
-export interface FrameBuffer { data: Float32Array; tick: number; }
+interface GameInput {
+  action: string;
+  timestamp: number;
+  payload: Record<string, unknown>;
+}
 
-const CACHE_CAPACITY = 1024;
-const ringBuffer = new Float32Array(CACHE_CAPACITY * 16);
-let cursor = 0;
+const VALID_ACTIONS = new Set(['MOVE', 'JUMP', 'ATTACK', 'INTERACT']);
 
-export const computePhysicsBatch = (entities: Float32Array[]): Float32Array => {
-  const batch = new Float32Array(entities.length * 16);
-  for (let i = 0; i < entities.length; i++) {
-    const offset = i * 16;
-    batch.set(entities[i], offset);
-  }
-  return batch;
+const validateInput = (data: unknown): data is GameInput => {
+  const input = data as GameInput;
+  return (
+    typeof input?.action === 'string' &&
+    VALID_ACTIONS.has(input.action) &&
+    typeof input?.timestamp === 'number' &&
+    typeof input?.payload === 'object'
+  );
 };
 
-export const memoizeTransform = (id: string, transform: Float32Array): Float32Array => {
-  const target = cursor % CACHE_CAPACITY;
-  const start = target * 16;
-  ringBuffer.set(transform, start);
-  cursor++;
-  return ringBuffer.subarray(start, start + 16);
+export const processGameLoop = (queue: unknown[]): void => {
+  const processed = queue.reduce<GameInput[]>((acc, entry) => {
+    if (validateInput(entry)) {
+      console.log(`Processing: ${entry.action} at ${entry.timestamp}`);
+      acc.push(entry);
+    } else {
+      console.warn('Discarding malformed input packet:', entry);
+    }
+    return acc;
+  }, []);
+
+  console.log(`Loop tick complete. Operations: ${processed.length}`);
 };
 
-export const flushBuffer = (): void => {
-  ringBuffer.fill(0);
-  cursor = 0;
-};
-
-export const getEngineTelemetry = () => ({
-  usage: cursor / CACHE_CAPACITY,
-  active: cursor > 0
-});
+export const gameService = { processGameLoop };
