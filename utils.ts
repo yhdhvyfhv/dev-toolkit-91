@@ -1,30 +1,27 @@
-export async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
-  retries: number = 3,
-  delay: number = 500
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    if (retries <= 0) throw error;
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    return retryWithBackoff(fn, retries - 1, delay * 1.5);
-  }
-}
+import * as fs from 'fs';
+import * as path from 'path';
 
-export const gameNetworkRequest = async <T>(task: () => Promise<T>) => {
-  const signal = new AbortController();
-  const timeout = setTimeout(() => signal.abort(), 10000);
+const LOG_DIR = './logs';
+const MAX_SIZE = 1024 * 1024 * 5;
 
-  try {
-    return await retryWithBackoff(async () => {
-      const result = await task();
-      return result;
-    });
-  } catch (err) {
-    console.error('[dev-toolkit-91] network operation failed:', err);
-    throw err;
-  } finally {
-    clearTimeout(timeout);
+export const gamingLogger = (message: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO') => {
+  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
+  const logPath = path.join(LOG_DIR, 'game-engine.log');
+  
+  if (fs.existsSync(logPath)) {
+    const stats = fs.statSync(logPath);
+    if (stats.size > MAX_SIZE) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      fs.renameSync(logPath, path.join(LOG_DIR, `game-engine-${timestamp}.log`));
+    }
   }
+
+  const entry = `[${new Date().toISOString()}] [${level}] ${message}\n`;
+  fs.appendFileSync(logPath, entry);
+};
+
+export const gameLog = {
+  info: (msg: string) => gamingLogger(msg, 'INFO'),
+  warn: (msg: string) => gamingLogger(msg, 'WARN'),
+  error: (msg: string) => gamingLogger(msg, 'ERROR')
 };
