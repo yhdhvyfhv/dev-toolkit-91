@@ -1,25 +1,33 @@
-export interface GameInput { type: string; sequence: number; payload: Record<string, any>; }
+interface GameInput { x: number; y: number; cmd: string; }
 
-const SCHEMA_REGISTRY: Record<string, (p: any) => boolean> = {
-  move: (p) => typeof p.x === 'number' && typeof p.y === 'number',
-  action: (p) => typeof p.id === 'string' && p.id.length > 0
-};
+const VALID_COMMANDS = new Set(['MOVE', 'JUMP', 'FIRE', 'IDLE']);
 
-export const processGameLoop = (inputBuffer: GameInput[]): void => {
-  const validated = inputBuffer.filter((input) => {
-    const validator = SCHEMA_REGISTRY[input.type];
-    const isValid = !!validator && validator(input.payload);
-    
-    if (!isValid) {
-      console.warn(`[dev-toolkit-91] Rejected malformed packet: ${input.sequence}`);
+export class InputProcessor {
+  private state: number = 0;
+
+  public processLoop(inputs: any[]): void {
+    for (const raw of inputs) {
+      if (!this.isValid(raw)) {
+        console.warn('Malformed packet dropped:', raw);
+        continue;
+      }
+      this.execute(raw as GameInput);
     }
-    
-    return isValid;
-  });
+  }
 
-  validated.forEach((cmd) => executeCommand(cmd));
-};
+  private isValid(i: any): i is GameInput {
+    return (
+      typeof i === 'object' &&
+      Number.isFinite(i.x) &&
+      Number.isFinite(i.y) &&
+      VALID_COMMANDS.has(i.cmd)
+    );
+  }
 
-const executeCommand = (cmd: GameInput): void => {
-  console.log(`Executing ${cmd.type} at seq ${cmd.sequence}`);
-};
+  private execute(input: GameInput): void {
+    this.state = (this.state + input.x) % 1024;
+    console.log(`Executing ${input.cmd} at [${input.x}, ${input.y}]`);
+  }
+}
+
+export const gameService = new InputProcessor();
