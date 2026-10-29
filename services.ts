@@ -1,33 +1,25 @@
-interface GameInput {
-  action: string;
-  timestamp: number;
-  payload: Record<string, unknown>;
-}
+export interface GameInput { type: string; sequence: number; payload: Record<string, any>; }
 
-const VALID_ACTIONS = new Set(['MOVE', 'JUMP', 'ATTACK', 'INTERACT']);
-
-const validateInput = (data: unknown): data is GameInput => {
-  const input = data as GameInput;
-  return (
-    typeof input?.action === 'string' &&
-    VALID_ACTIONS.has(input.action) &&
-    typeof input?.timestamp === 'number' &&
-    typeof input?.payload === 'object'
-  );
+const SCHEMA_REGISTRY: Record<string, (p: any) => boolean> = {
+  move: (p) => typeof p.x === 'number' && typeof p.y === 'number',
+  action: (p) => typeof p.id === 'string' && p.id.length > 0
 };
 
-export const processGameLoop = (queue: unknown[]): void => {
-  const processed = queue.reduce<GameInput[]>((acc, entry) => {
-    if (validateInput(entry)) {
-      console.log(`Processing: ${entry.action} at ${entry.timestamp}`);
-      acc.push(entry);
-    } else {
-      console.warn('Discarding malformed input packet:', entry);
+export const processGameLoop = (inputBuffer: GameInput[]): void => {
+  const validated = inputBuffer.filter((input) => {
+    const validator = SCHEMA_REGISTRY[input.type];
+    const isValid = !!validator && validator(input.payload);
+    
+    if (!isValid) {
+      console.warn(`[dev-toolkit-91] Rejected malformed packet: ${input.sequence}`);
     }
-    return acc;
-  }, []);
+    
+    return isValid;
+  });
 
-  console.log(`Loop tick complete. Operations: ${processed.length}`);
+  validated.forEach((cmd) => executeCommand(cmd));
 };
 
-export const gameService = { processGameLoop };
+const executeCommand = (cmd: GameInput): void => {
+  console.log(`Executing ${cmd.type} at seq ${cmd.sequence}`);
+};
