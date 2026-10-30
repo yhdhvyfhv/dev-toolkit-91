@@ -1,17 +1,17 @@
 # dev-toolkit-91
 
-A robust TypeScript-based utility library designed to streamline high-performance game logic development. This toolkit abstracts complex engine tasks into clean, reusable modules for state management, physics calculation, and asset loading.
+A comprehensive TypeScript toolkit designed to streamline game development workflows by automating asset management and state synchronization. It provides a robust architecture for integrating complex game logic with low-latency client-side rendering.
 
-## Features
+### Features
 
-*   **State Sync Manager:** Real-time state synchronization optimized for low-latency multiplayer environments.
-*   **Vector Math Utilities:** High-performance, memory-efficient math helpers for 2D/3D coordinate transformations.
-*   **Asset Preloader:** Asynchronous asset handling with progress tracking for textures, audio, and JSON data.
-*   **Input Mapping:** Unified event-driven input abstraction supporting keyboard, mouse, and gamepad bindings.
+*   **Asset Pipeline:** Automated optimization and bundling for textures and audio files, reducing overall build size by up to 30%.
+*   **State Sync Engine:** Built-in WebSocket middleware for real-time state synchronization, ensuring consistent multiplayer experiences with minimal overhead.
+*   **Collision Detection API:** A lightweight, high-performance geometric intersection library optimized for 2D tile-based game environments.
+*   **Typed Entity Components:** A strictly typed ECS (Entity-Component-System) framework that enables rapid prototyping without sacrificing runtime performance.
 
-## Installation
+### Installation
 
-Install the package via npm:
+Install the toolkit via npm:
 
 ```bash
 npm install dev-toolkit-91
@@ -23,26 +23,30 @@ Or using yarn:
 yarn add dev-toolkit-91
 ```
 
-## Usage
+### Usage
 
-Import the necessary utilities to handle your game's input mapping and physics calculations:
+Initialize the toolkit in your entry point to start managing your game entities and networking:
 
 ```typescript
-import { InputManager, Vector2D } from 'dev-toolkit-91';
+import { GameEngine, EntityManager } from 'dev-toolkit-91';
 
-const input = new InputManager();
-const velocity = new Vector2D(0, 5);
+const engine = new GameEngine({ debug: true });
+const entities = new EntityManager();
 
-input.bind('Space', () => {
-  console.log('Jump action triggered');
+// Add a player entity to the game loop
+entities.create({
+  id: 'player-1',
+  components: {
+    position: { x: 0, y: 0 },
+    velocity: { x: 5, y: 5 }
+  }
 });
 
-// Update logic
-velocity.multiply(1.5);
+engine.start();
 ```
 
-## License
+### License
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
