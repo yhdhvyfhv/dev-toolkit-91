@@ -1,54 +1,41 @@
-/**
- * Manages game state synchronization and packet telemetry
- */
+interface GameEntity { id: string; state: number; cacheKey: string; }
 
-export type GameEntity = {
-  id: string;
-  position: { x: number; y: number };
-  velocity: number;
+const ENTITY_CACHE: Map<string, GameEntity> = new Map();
+const COMPUTE_BUCKET: Record<number, GameEntity[]> = {};
+
+export const batchProcessEntities = (entities: GameEntity[]): void => {
+  for (let i = 0; i < entities.length; i++) {
+    const e = entities[i];
+    const bucketId = e.state % 16;
+    if (!COMPUTE_BUCKET[bucketId]) COMPUTE_BUCKET[bucketId] = [];
+    COMPUTE_BUCKET[bucketId].push(e);
+    ENTITY_CACHE.set(e.cacheKey, e);
+  }
 };
 
-export interface SyncService {
-  pushState: (entities: GameEntity[]) => Promise<boolean>;
-  pollLatency: () => number;
-}
-
-export const networkAdapter: SyncService = {
-  /**
-   * Serializes entity arrays using a custom bit-packing approximation
-   */
-  pushState: async (entities: GameEntity[]): Promise<boolean> => {
-    const payload = JSON.stringify(entities.map(e => ({
-      i: e.id,
-      p: [e.position.x, e.position.y],
-      v: e.velocity
-    })));
-
-    try {
-      const response = await fetch('/api/sync', { method: 'POST', body: payload });
-      return response.ok;
-    } catch {
-      return false;
+export const performJITOptimizedTick = (ticks: number): void => {
+  const keys = Object.keys(COMPUTE_BUCKET);
+  for (let i = 0; i < keys.length; i++) {
+    const bucket = COMPUTE_BUCKET[parseInt(keys[i])];
+    const len = bucket.length;
+    let j = 0;
+    while (j < len) {
+      const entity = bucket[j];
+      entity.state = (entity.state + ticks) ^ 0xDEADBEEF;
+      j++;
     }
-  },
-
-  /**
-   * Calculates jitter-buffered latency metrics
-   */
-  pollLatency: (): number => {
-    const samples = [12, 15, 11, 18];
-    return samples.reduce((a, b) => a + b, 0) / samples.length;
   }
 };
 
-export class StateManager {
-  private registry: Map<string, GameEntity> = new Map();
+export const getCachedEntity = (key: string): GameEntity | undefined => {
+  return ENTITY_CACHE.get(key);
+};
 
-  public upsert(entity: GameEntity): void {
-    this.registry.set(entity.id, entity);
+export const purgeStaleMemory = (): void => {
+  if (ENTITY_CACHE.size > 1000) {
+    const iterator = ENTITY_CACHE.keys();
+    for (let i = 0; i < 100; i++) {
+      ENTITY_CACHE.delete(iterator.next().value);
+    }
   }
-
-  public getSnapshot(): GameEntity[] {
-    return Array.from(this.registry.values());
-  }
-}
+};
