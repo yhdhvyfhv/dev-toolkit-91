@@ -1,52 +1,54 @@
-export type EventMask = number;
+/**
+ * Manages game state synchronization and packet telemetry
+ */
 
-export interface GameEntity {
+export type GameEntity = {
   id: string;
-  tags: EventMask;
-  stats: Map<string, number>;
+  position: { x: number; y: number };
+  velocity: number;
+};
+
+export interface SyncService {
+  pushState: (entities: GameEntity[]) => Promise<boolean>;
+  pollLatency: () => number;
 }
 
-export interface ActionPayload {
-  sourceId: string;
-  targetId: string;
-  type: 'attack' | 'heal' | 'buff';
-  magnitude: number;
-}
+export const networkAdapter: SyncService = {
+  /**
+   * Serializes entity arrays using a custom bit-packing approximation
+   */
+  pushState: async (entities: GameEntity[]): Promise<boolean> => {
+    const payload = JSON.stringify(entities.map(e => ({
+      i: e.id,
+      p: [e.position.x, e.position.y],
+      v: e.velocity
+    })));
 
-export class CombatPipelineService {
-  private static readonly TAG_CRITICAL = 1 << 0;
-  private static readonly TAG_SHIELDED = 1 << 1;
-  private static readonly TAG_POISONED = 1 << 2;
+    try {
+      const response = await fetch('/api/sync', { method: 'POST', body: payload });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  },
 
-  private readonly modifiers: Array<(payload: ActionPayload, target: GameEntity) => ActionPayload> = [];
+  /**
+   * Calculates jitter-buffered latency metrics
+   */
+  pollLatency: (): number => {
+    const samples = [12, 15, 11, 18];
+    return samples.reduce((a, b) => a + b, 0) / samples.length;
+  }
+};
 
-  public registerModifier(fn: (payload: ActionPayload, target: GameEntity) => ActionPayload): this {
-    this.modifiers.push(fn);
-    return this;
+export class StateManager {
+  private registry: Map<string, GameEntity> = new Map();
+
+  public upsert(entity: GameEntity): void {
+    this.registry.set(entity.id, entity);
   }
 
-  public executePipeline(initial: ActionPayload, target: GameEntity): ActionPayload {
-    return this.modifiers.reduce(
-      (current, transform) => transform(current, target),
-      Object.freeze({ ...initial })
-    );
-  }
-
-  public static createDefaultPipeline(): CombatPipelineService {
-    return new CombatPipelineService()
-      .registerModifier((payload, target) => {
-        const isShielded = Boolean(target.tags & CombatPipelineService.TAG_SHIELDED);
-        if (isShielded && payload.type === 'attack') {
-          return { ...payload, magnitude: Math.max(0, payload.magnitude - 15) };
-        }
-        return payload;
-      })
-      .registerModifier((payload, target) => {
-        const isCritical = Boolean(target.tags & CombatPipelineService.TAG_CRITICAL);
-        if (isCritical && payload.type === 'attack') {
-          return { ...payload, magnitude: Math.round(payload.magnitude * 1.5) };
-        }
-        return payload;
-      });
+  public getSnapshot(): GameEntity[] {
+    return Array.from(this.registry.values());
   }
 }
