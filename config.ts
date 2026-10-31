@@ -1,87 +1,76 @@
-export interface GameGraphicsConfig {
-  resolution: [number, number];
-  fpsCap: number;
-  vsync: boolean;
-  shadowQuality: 'off' | 'low' | 'medium' | 'high' | 'ultra';
-  rayTracing: boolean;
+/**
+ * @file Procedural difficulty dynamic configuration engine for game balancing.
+ */
+
+export type FactionId = 'cyber_samurai' | 'neon_monk' | 'void_runner';
+
+/**
+ * Mathematical scale multiplier vector applied to world entity spawns.
+ */
+export interface SpawnScaleConfig {
+  /** Multiplier for enemy health pool scaling. */
+  readonly hpMultiplier: number;
+  /** Multiplier for item drop rarity bias (0.1 to 5.0). */
+  readonly lootRarityWeight: number;
+  /** Aggro radius offset in global game units. */
+  readonly aggroDistanceOffset: number;
 }
 
-export interface GameAudioConfig {
-  masterVolume: number;
-  sfxVolume: number;
-  musicVolume: number;
-  spatialAudio: boolean;
-}
+/**
+ * Configuration schema map per game faction with auto-fallback defaults.
+ */
+export type FactionConfigMap = Record<FactionId, Partial<SpawnScaleConfig>>;
 
-export interface GameEngineConfig {
-  graphics: GameGraphicsConfig;
-  audio: GameAudioConfig;
-  tickRate: number;
-  debugOverlay: boolean;
-  maxPlayers: number;
-}
+/**
+ * Core configuration state store with dynamic compute hooks.
+ */
+export class DynamicDifficultyEngine {
+  private readonly baseConfig: Readonly<SpawnScaleConfig>;
+  private readonly factionOverrides: FactionConfigMap;
 
-const DEFAULT_GAMING_CONFIG: GameEngineConfig = {
-  graphics: {
-    resolution: [1920, 1080],
-    fpsCap: 144,
-    vsync: true,
-    shadowQuality: 'high',
-    rayTracing: false,
-  },
-  audio: {
-    masterVolume: 0.8,
-    sfxVolume: 1.0,
-    musicVolume: 0.7,
-    spatialAudio: true,
-  },
-  tickRate: 64,
-  debugOverlay: false,
-  maxPlayers: 16,
-};
-
-type DeepPartial<T> = {
-  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
-};
-
-export class ConfigLoader {
-  private activeConfig: GameEngineConfig;
-
-  constructor(overrides: DeepPartial<GameEngineConfig> = {}) {
-    this.activeConfig = this.mergeWithDefaults(DEFAULT_GAMING_CONFIG, overrides);
+  /**
+   * Constructs the difficulty engine with base scaling vectors.
+   * @param base Default scaling metrics for unaligned entities.
+   * @param overrides Per-faction specific override multipliers.
+   */
+  constructor(base: SpawnScaleConfig, overrides: FactionConfigMap) {
+    this.baseConfig = Object.freeze({ ...base });
+    this.factionOverrides = overrides;
   }
 
-  private mergeWithDefaults<T extends Record<string, any>>(defaults: T, overrides: Record<string, any>): T {
-    const result = { ...defaults };
-    for (const key of Object.keys(overrides)) {
-      const val = overrides[key];
-      if (val !== undefined) {
-        if (typeof val === 'object' && val !== null && !Array.isArray(val) && typeof defaults[key] === 'object') {
-          result[key as keyof T] = this.mergeWithDefaults(defaults[key], val);
-        } else {
-          result[key as keyof T] = val;
+  /**
+   * Resolves runtime scalar values for a given faction and level wave index.
+   * Uses dynamic object proxy evaluation to compute live metrics.
+   * 
+   * @param faction Targeted enemy faction key.
+   * @param waveIndex Current arena wave depth index (1-based).
+   * @returns Fully resolved spawn scale configuration snapshot.
+   */
+  public resolveWaveScale(faction: FactionId, waveIndex: number): SpawnScaleConfig {
+    const factionData = this.factionOverrides[faction] ?? {};
+    const depthFactor = Math.log2(Math.max(1, waveIndex)) + 1;
+
+    return new Proxy(this.baseConfig, {
+      get: (target: SpawnScaleConfig, prop: keyof SpawnScaleConfig): number => {
+        const baseVal = target[prop] ?? 1.0;
+        const overrideVal = factionData[prop];
+        const activeVal = overrideVal !== undefined ? overrideVal : baseVal;
+
+        if (prop === 'aggroDistanceOffset') {
+          return activeVal + Math.min(waveIndex * 0.5, 15);
         }
+        return Number((activeVal * depthFactor).toFixed(3));
       }
-    }
-    return result;
-  }
-
-  public get<K extends keyof GameEngineConfig>(key: K): GameEngineConfig[K] {
-    return Object.freeze(structuredClone(this.activeConfig[key]));
-  }
-
-  public createReactiveProxy(onUpdate?: (updatedConfig: GameEngineConfig) => void): GameEngineConfig {
-    const handler: ProxyHandler<any> = {
-      get: (target, prop) => {
-        const val = target[prop];
-        return typeof val === 'object' && val !== null ? new Proxy(val, handler) : val;
-      },
-      set: (target, prop, value) => {
-        target[prop] = value;
-        if (onUpdate) onUpdate(this.activeConfig);
-        return true;
-      },
-    };
-    return new Proxy(this.activeConfig, handler);
+    });
   }
 }
+
+/** Pre-baked balanced defaults for standard game instances. */
+export const DEFAULT_DIFFICULTY_CONFIG: DynamicDifficultyEngine = new DynamicDifficultyEngine(
+  { hpMultiplier: 1.2, lootRarityWeight: 1.0, aggroDistanceOffset: 5.0 },
+  {
+    cyber_samurai: { hpMultiplier: 1.8 },
+    neon_monk: { aggroDistanceOffset: 12.0 },
+    void_runner: { lootRarityWeight: 2.5 }
+  }
+);
