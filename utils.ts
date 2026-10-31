@@ -1,27 +1,38 @@
-import * as fs from 'fs';
-import * as path from 'path';
+export type GameEntity = { id: string; health: number; power: number };
 
-const LOG_DIR = './logs';
-const MAX_SIZE = 1024 * 1024 * 5;
-
-export const gamingLogger = (message: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO') => {
-  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
-  const logPath = path.join(LOG_DIR, 'game-engine.log');
+export const calculateCombatOutcome = (
+  attacker: GameEntity,
+  defender: GameEntity,
+  modifier: number = 1.0
+): { damage: number; result: GameEntity } => {
+  const baseDamage = Math.max(0, attacker.power - (defender.health / 10));
+  const totalDamage = Math.floor(baseDamage * modifier * (Math.random() * 0.5 + 0.75));
   
-  if (fs.existsSync(logPath)) {
-    const stats = fs.statSync(logPath);
-    if (stats.size > MAX_SIZE) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      fs.renameSync(logPath, path.join(LOG_DIR, `game-engine-${timestamp}.log`));
+  return {
+    damage: totalDamage,
+    result: {
+      ...defender,
+      health: Math.max(0, defender.health - totalDamage)
     }
-  }
-
-  const entry = `[${new Date().toISOString()}] [${level}] ${message}\n`;
-  fs.appendFileSync(logPath, entry);
+  };
 };
 
-export const gameLog = {
-  info: (msg: string) => gamingLogger(msg, 'INFO'),
-  warn: (msg: string) => gamingLogger(msg, 'WARN'),
-  error: (msg: string) => gamingLogger(msg, 'ERROR')
+export const batchNormalizeEntities = <T extends GameEntity>(
+  entities: T[],
+  maxCap: number
+): T[] => {
+  const totalPower = entities.reduce((acc, e) => acc + e.power, 0);
+  const scalar = totalPower > maxCap ? maxCap / totalPower : 1;
+
+  return entities.map(e => ({
+    ...e,
+    power: Math.round(e.power * scalar)
+  }));
+};
+
+export const getEntityTier = (entity: GameEntity): 'common' | 'rare' | 'legendary' => {
+  const score = entity.health + entity.power;
+  if (score > 500) return 'legendary';
+  if (score > 200) return 'rare';
+  return 'common';
 };
