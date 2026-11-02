@@ -1,37 +1,47 @@
-export type RetryOptions = { maxRetries: number; baseDelay: number };
+/**
+ * Represents coordinate data for game entities
+ */
+export interface Point {
+  x: number;
+  y: number;
+}
 
-export const withExponentialBackoff = async <T>(
-  fn: () => Promise<T>,
-  { maxRetries = 3, baseDelay = 1000 }: RetryOptions = { maxRetries: 3, baseDelay: 1000 }
-): Promise<T> => {
-  let lastError: unknown;
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      if (attempt === maxRetries) break;
-      
-      const jitter = Math.random() * 200;
-      const delay = Math.pow(2, attempt) * baseDelay + jitter;
-      
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-  
-  throw lastError instanceof Error 
-    ? new Error(`network failure after ${maxRetries} retries: ${lastError.message}`) 
-    : lastError;
+/**
+ * Calculates the Manhattan distance between two points
+ * useful for grid-based game movement systems
+ */
+export const getManhattanDistance = (a: Point, b: Point): number => {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 };
 
-export const fetchWithGamingTimeout = async (url: string, timeoutMs: number = 5000): Promise<Response> => {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    return await fetch(url, { signal: controller.signal });
-  } finally {
-    clearTimeout(id);
-  }
+/**
+ * Generates a pseudo-random integer within a range
+ * inclusive of min, exclusive of max
+ */
+export const rollDice = (min: number, max: number): number => {
+  return Math.floor(Math.random() * (max - min) + min);
+};
+
+/**
+ * Flattens nested game entity state maps into an array
+ * utilizing functional composition for clean pipelines
+ */
+export const unpackState = <T>(stateMap: Map<string, T>): T[] => {
+  return Array.from(stateMap.values());
+};
+
+/**
+ * Clamps a numerical value between bounds
+ * essential for preventing out-of-bounds entity positioning
+ */
+export const clamp = (val: number, min: number, max: number): number => {
+  return Math.max(min, Math.min(max, val));
+};
+
+/**
+ * Determines if two bounding boxes overlap
+ * standard AABB collision detection logic
+ */
+export const isColliding = (p1: Point, p2: Point, size: number): boolean => {
+  return Math.abs(p1.x - p2.x) < size && Math.abs(p1.y - p2.y) < size;
 };
