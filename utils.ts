@@ -1,47 +1,74 @@
 /**
- * Represents coordinate data for game entities
+ * Core gaming utility belt for spatial partitioning and bitwise status effect calculations.
+ *
+ * @module gaming-utils
  */
-export interface Point {
-  x: number;
-  y: number;
+
+/** Valid elemental affinity flags mapped to bit shifts. */
+export type ElementalAffinity = 'fire' | 'water' | 'earth' | 'air' | 'shadow' | 'holy';
+
+/** Branded nominal type for packed spatial hash coordinates. */
+export type SpatialHash = string & { readonly __brand: unique symbol };
+
+/** Representation of an entity's 3D integer coordinate in grid units. */
+export type GridCoord3D = readonly [x: number, y: number, z: number];
+
+/** Map of elemental types to bit position offsets. */
+const AFFINITY_OFFSETS: Readonly<Record<ElementalAffinity, number>> = {
+  fire: 0,
+  water: 1,
+  earth: 2,
+  air: 3,
+  shadow: 4,
+  holy: 5,
+};
+
+/**
+ * Computes a spatial hash string from 3D coordinates for fast broad-phase collision lookups.
+ *
+ * @param coord - The [x, y, z] grid coordinate tuple.
+ * @returns A unique branded spatial hash string.
+ */
+export function encodeSpatialHash(coord: GridCoord3D): SpatialHash {
+  const [x, y, z] = coord;
+  const packed = ((x & 0x3ff) << 20) | ((y & 0x3ff) << 10) | (z & 0x3ff);
+  return (packed >>> 0).toString(36) as SpatialHash;
 }
 
 /**
- * Calculates the Manhattan distance between two points
- * useful for grid-based game movement systems
+ * Packs active elemental affinities into a single bitmask integer.
+ *
+ * @param affinities - Array of active elemental flags.
+ * @returns A 32-bit unsigned integer bitmask.
  */
-export const getManhattanDistance = (a: Point, b: Point): number => {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-};
+export function packAffinityMask(affinities: readonly ElementalAffinity[]): number {
+  return affinities.reduce<number>((mask, affinity) => {
+    return mask | (1 << AFFINITY_OFFSETS[affinity]);
+  }, 0) >>> 0;
+}
 
 /**
- * Generates a pseudo-random integer within a range
- * inclusive of min, exclusive of max
+ * Checks if a specific affinity bit is enabled within a packed affinity bitmask.
+ *
+ * @param mask - The 32-bit bitmask integer.
+ * @param affinity - The affinity flag to verify.
+ * @returns True if the target affinity is present in the bitmask.
  */
-export const rollDice = (min: number, max: number): number => {
-  return Math.floor(Math.random() * (max - min) + min);
-};
+export function hasAffinity(mask: number, affinity: ElementalAffinity): boolean {
+  return (mask & (1 << AFFINITY_OFFSETS[affinity])) !== 0;
+}
 
 /**
- * Flattens nested game entity state maps into an array
- * utilizing functional composition for clean pipelines
+ * Calculates dynamic damage multiplier based on elemental advantage matrix bitwise evaluation.
+ *
+ * @param attackerMask - Attacker's active affinity bitmask.
+ * @param defenderMask - Defender's active affinity bitmask.
+ * @returns Calculated float multiplier.
  */
-export const unpackState = <T>(stateMap: Map<string, T>): T[] => {
-  return Array.from(stateMap.values());
-};
-
-/**
- * Clamps a numerical value between bounds
- * essential for preventing out-of-bounds entity positioning
- */
-export const clamp = (val: number, min: number, max: number): number => {
-  return Math.max(min, Math.min(max, val));
-};
-
-/**
- * Determines if two bounding boxes overlap
- * standard AABB collision detection logic
- */
-export const isColliding = (p1: Point, p2: Point, size: number): boolean => {
-  return Math.abs(p1.x - p2.x) < size && Math.abs(p1.y - p2.y) < size;
-};
+export function computeAffinityMultiplier(attackerMask: number, defenderMask: number): number {
+  let multiplier = 1.0;
+  if ((attackerMask & 1) && (defenderMask & 2)) multiplier += 0.5;
+  if ((attackerMask & 2) && (defenderMask & 1)) multiplier += 0.75;
+  if ((attackerMask & 16) && (defenderMask & 32)) multiplier += 1.0;
+  return multiplier;
+}
