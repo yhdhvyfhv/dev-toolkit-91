@@ -1,35 +1,30 @@
-export interface GameConfig {
-  renderScale: number;
-  audioVolume: number;
-  debugMode: boolean;
-  shaderPath: string;
-}
+export interface GameInput { command: string; intensity: number; }
 
-const DEFAULTS: GameConfig = {
-  renderScale: 1.0,
-  audioVolume: 0.8,
-  debugMode: false,
-  shaderPath: './shaders/base.glsl'
+const VALID_COMMANDS = new Set(['jump', 'crouch', 'fire', 'dash']);
+
+export const validateInput = (input: unknown): GameInput => {
+  if (typeof input !== 'object' || input === null) {
+    throw new Error('invalid data structure');
+  }
+
+  const { command, intensity } = input as any;
+
+  if (!VALID_COMMANDS.has(command)) {
+    throw new Error(`forbidden command: ${command}`);
+  }
+
+  const safeIntensity = Math.min(Math.max(Number(intensity) || 0, 0), 100);
+
+  return { command, intensity: safeIntensity };
 };
 
-export const loadConfig = (input: Partial<GameConfig> = {}): GameConfig => {
-  const config = { ...DEFAULTS, ...input };
-  
-  return new Proxy(config, {
-    get(target, prop: keyof GameConfig) {
-      if (!(prop in target)) {
-        console.warn(`[dev-toolkit-91] access to undefined config: ${String(prop)}`);
-      }
-      return target[prop];
+export const processLoop = (rawBuffer: unknown[]) => {
+  return rawBuffer.map((packet) => {
+    try {
+      return validateInput(packet);
+    } catch (err) {
+      console.error('corrupt packet discarded', err);
+      return null;
     }
-  });
-};
-
-export const validateConfig = (config: GameConfig): boolean => {
-  const rules = [
-    config.renderScale > 0,
-    config.audioVolume >= 0 && config.audioVolume <= 1,
-    config.shaderPath.endsWith('.glsl')
-  ];
-  return rules.every(Boolean);
+  }).filter(Boolean) as GameInput[];
 };
