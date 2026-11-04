@@ -1,30 +1,52 @@
-export interface GameInput { command: string; intensity: number; }
+export type PerformanceProfile = 'potato' | 'competitive' | 'ultra';
 
-const VALID_COMMANDS = new Set(['jump', 'crouch', 'fire', 'dash']);
+export interface GameConfig {
+  tickRate: number;
+  fov: number;
+  fpsCap: number;
+  rayTracing: boolean;
+  audioChannels: number;
+  serverRegion: string;
+}
 
-export const validateInput = (input: unknown): GameInput => {
-  if (typeof input !== 'object' || input === null) {
-    throw new Error('invalid data structure');
-  }
-
-  const { command, intensity } = input as any;
-
-  if (!VALID_COMMANDS.has(command)) {
-    throw new Error(`forbidden command: ${command}`);
-  }
-
-  const safeIntensity = Math.min(Math.max(Number(intensity) || 0, 0), 100);
-
-  return { command, intensity: safeIntensity };
+const DEFAULTS: GameConfig = {
+  tickRate: 64,
+  fov: 90,
+  fpsCap: 144,
+  rayTracing: false,
+  audioChannels: 32,
+  serverRegion: 'auto-detect',
 };
 
-export const processLoop = (rawBuffer: unknown[]) => {
-  return rawBuffer.map((packet) => {
-    try {
-      return validateInput(packet);
-    } catch (err) {
-      console.error('corrupt packet discarded', err);
-      return null;
-    }
-  }).filter(Boolean) as GameInput[];
+const PROFILE_PRESETS: Record<PerformanceProfile, Partial<GameConfig>> = {
+  potato: { tickRate: 30, fov: 75, fpsCap: 60, rayTracing: false, audioChannels: 16 },
+  competitive: { tickRate: 128, fov: 104, fpsCap: 300, rayTracing: false },
+  ultra: { tickRate: 64, fov: 90, fpsCap: 120, rayTracing: true, audioChannels: 64 },
 };
+
+export class ConfigLoader {
+  private cachedConfig: GameConfig;
+
+  constructor(profile: PerformanceProfile = 'competitive', overrides: Partial<GameConfig> = {}) {
+    const profileDefaults = PROFILE_PRESETS[profile] ?? {};
+    this.cachedConfig = new Proxy(
+      { ...DEFAULTS, ...profileDefaults, ...overrides },
+      {
+        get: (target, prop: keyof GameConfig) => {
+          if (!(prop in target)) {
+            console.warn(`[ConfigLoader] Unrecognized setting accessed: ${String(prop)}`);
+          }
+          return target[prop];
+        },
+      }
+    );
+  }
+
+  public get<K extends keyof GameConfig>(key: K): GameConfig[K] {
+    return this.cachedConfig[key];
+  }
+
+  public exportSnapshot(): Readonly<GameConfig> {
+    return Object.freeze({ ...this.cachedConfig });
+  }
+}
