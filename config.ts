@@ -1,52 +1,74 @@
-export type PerformanceProfile = 'potato' | 'competitive' | 'ultra';
-
 export interface GameConfig {
-  tickRate: number;
+  targetFps: number;
+  graphicsTier: 'potato' | 'low' | 'medium' | 'high' | 'ultra';
+  particleBudget: number;
+  audioVolume: number;
   fov: number;
-  fpsCap: number;
-  rayTracing: boolean;
-  audioChannels: number;
-  serverRegion: string;
+  debugOverlay: boolean;
+  keybindings: Record<string, string>;
 }
 
-const DEFAULTS: GameConfig = {
-  tickRate: 64,
+const ENGINE_DEFAULTS: GameConfig = {
+  targetFps: 60,
+  graphicsTier: 'medium',
+  particleBudget: 1000,
+  audioVolume: 0.8,
   fov: 90,
-  fpsCap: 144,
-  rayTracing: false,
-  audioChannels: 32,
-  serverRegion: 'auto-detect',
+  debugOverlay: false,
+  keybindings: {
+    moveForward: 'KeyW',
+    moveBackward: 'KeyS',
+    strafeLeft: 'KeyA',
+    strafeRight: 'KeyD',
+    jump: 'Space',
+    primaryAction: 'Mouse0',
+  },
 };
 
-const PROFILE_PRESETS: Record<PerformanceProfile, Partial<GameConfig>> = {
-  potato: { tickRate: 30, fov: 75, fpsCap: 60, rayTracing: false, audioChannels: 16 },
-  competitive: { tickRate: 128, fov: 104, fpsCap: 300, rayTracing: false },
-  ultra: { tickRate: 64, fov: 90, fpsCap: 120, rayTracing: true, audioChannels: 64 },
+const TIER_PARTICLE_MULTIPLIERS: Record<GameConfig['graphicsTier'], number> = {
+  potato: 0.25,
+  low: 0.5,
+  medium: 1.0,
+  high: 2.0,
+  ultra: 4.0,
 };
 
-export class ConfigLoader {
-  private cachedConfig: GameConfig;
+export class DynamicConfigLoader {
+  private baseDefaults: GameConfig;
 
-  constructor(profile: PerformanceProfile = 'competitive', overrides: Partial<GameConfig> = {}) {
-    const profileDefaults = PROFILE_PRESETS[profile] ?? {};
-    this.cachedConfig = new Proxy(
-      { ...DEFAULTS, ...profileDefaults, ...overrides },
-      {
-        get: (target, prop: keyof GameConfig) => {
-          if (!(prop in target)) {
-            console.warn(`[ConfigLoader] Unrecognized setting accessed: ${String(prop)}`);
-          }
-          return target[prop];
-        },
-      }
-    );
+  constructor(customDefaults: Partial<GameConfig> = {}) {
+    this.baseDefaults = { ...ENGINE_DEFAULTS, ...customDefaults };
   }
 
-  public get<K extends keyof GameConfig>(key: K): GameConfig[K] {
-    return this.cachedConfig[key];
+  public load(overrides: Partial<GameConfig> = {}): GameConfig {
+    const rawConfig = { ...this.baseDefaults, ...overrides };
+
+    return new Proxy(rawConfig, {
+      get: (target, prop: string | symbol) => {
+        const key = prop as keyof GameConfig;
+        const val = target[key];
+
+        if (key === 'particleBudget' && overrides.particleBudget === undefined) {
+          const tier = target.graphicsTier || 'medium';
+          const multiplier = TIER_PARTICLE_MULTIPLIERS[tier] ?? 1.0;
+          return Math.floor((this.baseDefaults.particleBudget || 1000) * multiplier);
+        }
+
+        if (key === 'targetFps') {
+          return typeof val === 'number' && val > 0 ? Math.min(val, 240) : 60;
+        }
+
+        if (key === 'fov') {
+          return typeof val === 'number' ? Math.max(60, Math.min(val, 120)) : 90;
+        }
+
+        return val;
+      },
+    });
   }
 
-  public exportSnapshot(): Readonly<GameConfig> {
-    return Object.freeze({ ...this.cachedConfig });
+  public mergePresets(...presets: Array<Partial<GameConfig>>): GameConfig {
+    const combined = presets.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+    return this.load(combined);
   }
 }
