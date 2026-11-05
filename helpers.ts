@@ -1,78 +1,65 @@
-/**
- * Bit-flag representation of entity status effects for high-frequency updates.
- */
-export type StatusMask = number;
+export type StatusEffect = 'poison' | 'burn' | 'freeze' | 'stun' | 'haste' | 'stealth' | 'shield';
 
-/**
- * Frame-indexed input tuple tuple tracking timestamp and control token.
- */
-export type InputFrameTuple<T extends string = string> = readonly [frame: number, input: T];
+const STATUS_BITS: Record<StatusEffect, number> = {
+  poison:  1 << 0,
+  burn:    1 << 1,
+  freeze:  1 << 2,
+  stun:    1 << 3,
+  haste:   1 << 4,
+  stealth: 1 << 5,
+  shield:  1 << 6,
+};
 
-/**
- * Calculates dynamic hit damage using bitwise status evaluation and chaotic scalar variance.
- * 
- * @param baseDamage - Raw damage payload before entity mitigation
- * @param statusMask - Bitfield encoding active elemental/buff states
- * @param multiplier - Floating-point scale factor (defaults to baseline 1.0)
- * @returns Computed final damage integer rounded down to tick boundary
- */
-export function computeFrameDamage(
-  baseDamage: number,
-  statusMask: StatusMask,
-  multiplier: number = 1.0
-): number {
-  const CRITICAL_BIT = 1 << 0;
-  const POISON_BIT = 1 << 1;
-  const FRENZY_BIT = 1 << 2;
+export class GamingBitState {
+  private mask: number = 0;
 
-  let total = baseDamage * multiplier;
-
-  if ((statusMask & CRITICAL_BIT) !== 0) {
-    total *= 1.75;
-  }
-  if ((statusMask & FRENZY_BIT) !== 0) {
-    // Creative non-linear XOR modifier for chaos-mode damage shifts
-    total = (Math.floor(total) ^ 7) + 12;
-  }
-  if ((statusMask & POISON_BIT) !== 0) {
-    total *= 0.85;
+  constructor(initialFlags: StatusEffect[] = []) {
+    initialFlags.forEach((flag) => this.add(flag));
   }
 
-  return Math.max(0, Math.floor(total));
+  public add(effect: StatusEffect): this {
+    this.mask |= STATUS_BITS[effect];
+    return this;
+  }
+
+  public remove(effect: StatusEffect): this {
+    this.mask &= ~STATUS_BITS[effect];
+    return this;
+  }
+
+  public has(effect: StatusEffect): boolean {
+    return (this.mask & STATUS_BITS[effect]) !== 0;
+  }
+
+  public toggle(effect: StatusEffect): boolean {
+    this.mask ^= STATUS_BITS[effect];
+    return this.has(effect);
+  }
+
+  public activeEffects(): StatusEffect[] {
+    return (Object.keys(STATUS_BITS) as StatusEffect[]).filter((e) => this.has(e));
+  }
+
+  public serialize(): string {
+    return this.mask.toString(36);
+  }
+
+  public static deserialize(encoded: string): GamingBitState {
+    const instance = new GamingBitState();
+    instance.mask = parseInt(encoded, 36) || 0;
+    return instance;
+  }
 }
 
-/**
- * Scans input buffers to verify frame-perfect fighting game combo execution.
- * 
- * @template T - Constrained string type for sequence token inputs
- * @param inputHistory - Timeline of player inputs paired with exact engine frames
- * @param movePattern - Sequence of inputs required to activate move
- * @param windowFrames - Maximum allowable frame divergence between sequence links
- * @returns Boolean flag indicating pattern match within threshold window
- */
-export function validateComboWindow<T extends string>(
-  inputHistory: ReadonlyArray<InputFrameTuple<T>>,
-  movePattern: ReadonlyArray<T>,
-  windowFrames: number
-): boolean {
-  if (movePattern.length === 0 || inputHistory.length < movePattern.length) {
-    return false;
-  }
-
-  let patternIndex = movePattern.length - 1;
-  let lastFrame = Infinity;
-
-  for (let i = inputHistory.length - 1; i >= 0; i--) {
-    const [frame, input] = inputHistory[i];
-    if (input === movePattern[patternIndex]) {
-      if (lastFrame !== Infinity && (lastFrame - frame) > windowFrames) {
-        return false;
+export function createReactiveEntity<T extends object>(baseStats: T, statusState: GamingBitState) {
+  return new Proxy(baseStats, {
+    get(target, prop, receiver) {
+      if (prop === '$status') return statusState;
+      if (typeof prop === 'string' && prop.startsWith('is')) {
+        const effect = prop.slice(2).toLowerCase() as StatusEffect;
+        if (effect in STATUS_BITS) return statusState.has(effect);
       }
-      lastFrame = frame;
-      patternIndex--;
-      if (patternIndex < 0) return true;
-    }
-  }
-
-  return false;
+      return Reflect.get(target, prop, receiver);
+    },
+  });
 }
