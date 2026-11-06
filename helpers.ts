@@ -1,65 +1,32 @@
-export type StatusEffect = 'poison' | 'burn' | 'freeze' | 'stun' | 'haste' | 'stealth' | 'shield';
+export type GameEntity = { id: string; x: number; y: number; health: number };
 
-const STATUS_BITS: Record<StatusEffect, number> = {
-  poison:  1 << 0,
-  burn:    1 << 1,
-  freeze:  1 << 2,
-  stun:    1 << 3,
-  haste:   1 << 4,
-  stealth: 1 << 5,
-  shield:  1 << 6,
+export const calculateDistance = (a: GameEntity, b: GameEntity): number => 
+  Math.hypot(a.x - b.x, a.y - b.y);
+
+export const normalizeVector = (x: number, y: number): [number, number] => {
+  const mag = Math.sqrt(x * x + y * y) || 1;
+  return [x / mag, y / mag];
 };
 
-export class GamingBitState {
-  private mask: number = 0;
+export const interpolate = (start: number, end: number, alpha: number): number => 
+  start + (end - start) * Math.max(0, Math.min(1, alpha));
 
-  constructor(initialFlags: StatusEffect[] = []) {
-    initialFlags.forEach((flag) => this.add(flag));
-  }
+export const generateId = (prefix: string = 'dev'): string => 
+  `${prefix}-${Math.random().toString(36).substring(2, 9)}`;
 
-  public add(effect: StatusEffect): this {
-    this.mask |= STATUS_BITS[effect];
-    return this;
-  }
+export const throttle = <T extends (...args: any[]) => void>(fn: T, limit: number) => {
+  let lastCall = 0;
+  return (...args: Parameters<T>) => {
+    const now = Date.now();
+    if (now - lastCall >= limit) {
+      lastCall = now;
+      fn(...args);
+    }
+  };
+};
 
-  public remove(effect: StatusEffect): this {
-    this.mask &= ~STATUS_BITS[effect];
-    return this;
-  }
+export const clamp = (val: number, min: number, max: number): number => 
+  Math.min(Math.max(val, min), max);
 
-  public has(effect: StatusEffect): boolean {
-    return (this.mask & STATUS_BITS[effect]) !== 0;
-  }
-
-  public toggle(effect: StatusEffect): boolean {
-    this.mask ^= STATUS_BITS[effect];
-    return this.has(effect);
-  }
-
-  public activeEffects(): StatusEffect[] {
-    return (Object.keys(STATUS_BITS) as StatusEffect[]).filter((e) => this.has(e));
-  }
-
-  public serialize(): string {
-    return this.mask.toString(36);
-  }
-
-  public static deserialize(encoded: string): GamingBitState {
-    const instance = new GamingBitState();
-    instance.mask = parseInt(encoded, 36) || 0;
-    return instance;
-  }
-}
-
-export function createReactiveEntity<T extends object>(baseStats: T, statusState: GamingBitState) {
-  return new Proxy(baseStats, {
-    get(target, prop, receiver) {
-      if (prop === '$status') return statusState;
-      if (typeof prop === 'string' && prop.startsWith('is')) {
-        const effect = prop.slice(2).toLowerCase() as StatusEffect;
-        if (effect in STATUS_BITS) return statusState.has(effect);
-      }
-      return Reflect.get(target, prop, receiver);
-    },
-  });
-}
+export const isColliding = (a: GameEntity, b: GameEntity, radius: number): boolean => 
+  calculateDistance(a, b) < radius * 2;
