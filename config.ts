@@ -1,28 +1,30 @@
-export type GameInput = { id: string; action: string; intensity: number };
+export interface GameConfig {
+  renderMode: 'webgl' | 'canvas';
+  maxLatencyMs: number;
+}
 
-export const validateInput = (data: unknown): GameInput => {
-  const input = data as GameInput;
-  if (typeof input?.id !== 'string' || input.id.length < 3) throw new Error('Invalid ID');
-  if (typeof input?.intensity !== 'number' || input.intensity < 0 || input.intensity > 1) {
-    input.intensity = Math.max(0, Math.min(1, input.intensity || 0));
+export const validateConfig = (config: unknown): GameConfig => {
+  if (typeof config !== 'object' || config === null) {
+    throw new Error('invalid config schema');
   }
-  return { ...input, action: input.action?.toLowerCase() || 'idle' };
+
+  const safe = config as Partial<GameConfig>;
+  const mode = ['webgl', 'canvas'].includes(safe.renderMode!) ? safe.renderMode : 'webgl';
+  const latency = (typeof safe.maxLatencyMs === 'number' && safe.maxLatencyMs > 0) ? safe.maxLatencyMs : 150;
+
+  return { renderMode: mode as 'webgl' | 'canvas', maxLatencyMs: latency };
 };
 
-export const processLoop = (queue: unknown[]) => {
-  const results: GameInput[] = [];
-  for (const raw of queue) {
-    try {
-      results.push(validateInput(raw));
-    } catch (e) {
-      console.warn('Dropping corrupted frame packet:', e);
-    }
+export const safeLoad = (raw: string): GameConfig => {
+  try {
+    return validateConfig(JSON.parse(raw));
+  } catch (err) {
+    console.error('config fallback trigger:', err);
+    return { renderMode: 'canvas', maxLatencyMs: 500 };
   }
-  return results;
 };
 
-export const CONFIG_DEFAULTS = {
-  MAX_FPS: 144,
-  INPUT_BUFFER_SIZE: 1024,
-  ENABLE_INPUT_SANITIZATION: true
-};
+export const CONFIG_DEFAULTS: GameConfig = Object.freeze({
+  renderMode: 'webgl',
+  maxLatencyMs: 100
+});
