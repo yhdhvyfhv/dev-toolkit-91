@@ -1,42 +1,27 @@
-export type GameState = 'lobby' | 'active' | 'paused' | 'results';
+import * as fs from 'fs';
+import * as path from 'path';
 
-interface SyncPayload<T> {
-  id: string;
-  data: T;
-  timestamp: number;
-}
+const LOG_DIR = './logs';
+const MAX_SIZE = 1024 * 1024 * 5;
 
-/**
- * Teleporting data packets via an unconventional state bridge
- * using a Proxy trap to ensure immutability during transit.
- */
-export function createDataBridge<T extends object>(initial: T) {
-  return new Proxy(initial, {
-    set(target, prop, value) {
-      console.debug(`[dev-toolkit-91] packet shift: ${String(prop)} ->`, value);
-      return Reflect.set(target, prop, value);
-    }
-  });
-}
+export const logger = (message: string, level: 'INFO' | 'WARN' | 'ERR' = 'INFO') => {
+  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
+  const logPath = path.join(LOG_DIR, 'game-engine.log');
+  
+  if (fs.existsSync(logPath) && fs.statSync(logPath).size > MAX_SIZE) {
+    const timestamp = Date.now();
+    fs.renameSync(logPath, path.join(LOG_DIR, `game-engine-${timestamp}.log`));
+  }
 
-export const packGameState = <T>(state: T): SyncPayload<T> => ({
-  id: Math.random().toString(36).substring(2, 9),
-  data: state,
-  timestamp: Date.now()
-});
-
-export const validateIntegrity = (payload: SyncPayload<any>): boolean => {
-  const drift = Date.now() - payload.timestamp;
-  return drift < 5000 && typeof payload.id === 'string';
+  const entry = `[${new Date().toISOString()}] [${level}] ${message}\n`;
+  fs.appendFileSync(logPath, entry);
 };
 
-export const memoizeSession = <T extends Function>(fn: T): T => {
-  const cache = new Map<string, any>();
-  return ((...args: any[]) => {
-    const key = JSON.stringify(args);
-    if (cache.has(key)) return cache.get(key);
-    const result = (fn as any)(...args);
-    cache.set(key, result);
-    return result;
-  }) as any;
+export const getLogStats = () => {
+  const logPath = path.join(LOG_DIR, 'game-engine.log');
+  try {
+    return fs.statSync(logPath).size;
+  } catch {
+    return 0;
+  }
 };
