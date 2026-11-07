@@ -1,44 +1,41 @@
-export type GameTick = number;
-export type EntityId = string | number;
-
-export interface PerformanceBuffer<T> {
-  data: Float64Array;
-  cursor: number;
-  capacity: number;
-  push: (val: number) => void;
-  getAverage: () => number;
-}
-
-export class TickTracker implements PerformanceBuffer<number> {
-  public data: Float64Array;
-  public cursor: number = 0;
-
-  constructor(public capacity: number = 60) {
-    this.data = new Float64Array(capacity);
-  }
-
-  push(val: number): void {
-    this.data[this.cursor] = val;
-    this.cursor = (this.cursor + 1) % this.capacity;
-  }
-
-  getAverage(): number {
-    let sum = 0;
-    for (let i = 0; i < this.capacity; i++) {
-      sum += this.data[i];
-    }
-    return sum / this.capacity;
-  }
-}
-
-export type MemorySnapshot = {
-  heapUsed: number;
-  timestamp: GameTick;
-  pressure: 'low' | 'medium' | 'high';
+/**
+ * Represents the coordinate system for game entity positioning.
+ */
+export type Vector2 = {
+  readonly x: number;
+  readonly y: number;
 };
 
-export const getMemoryProfile = (usage: number): MemorySnapshot => ({
-  heapUsed: usage,
-  timestamp: Date.now(),
-  pressure: usage > 0.8 ? 'high' : usage > 0.5 ? 'medium' : 'low'
-});
+/**
+ * State transition map for various game entities.
+ */
+export type EntityState = 'idle' | 'walking' | 'attacking' | 'dying';
+
+/**
+ * Configuration schema for custom game performance tuning.
+ */
+export interface GameConfig {
+  readonly fps: number;
+  readonly physicsEngine: 'cannon' | 'ammo' | 'custom';
+  readonly debugMode: boolean;
+}
+
+/**
+ * A collection of entity metadata for dev-toolkit-91.
+ */
+export interface EntityDescriptor {
+  id: string;
+  name: string;
+  position: Vector2;
+  state: EntityState;
+  /** Calculated velocity based on frame delta time */
+  velocity: (dt: number) => Vector2;
+}
+
+/**
+ * Union type representing possible input events in the engine.
+ */
+export type InputEvent = 
+  | { type: 'keydown'; key: string }
+  | { type: 'mousemove'; pos: Vector2 }
+  | { type: 'mousedown'; button: number };
