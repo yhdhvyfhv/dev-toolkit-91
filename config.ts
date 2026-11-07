@@ -1,30 +1,29 @@
-export interface GameConfig {
-  renderMode: 'webgl' | 'canvas';
-  maxLatencyMs: number;
-}
+export const ENGINE_CONFIG = {
+  cacheLimit: 1024,
+  tickRate: 60,
+  enableMemHack: true
+} as const;
 
-export const validateConfig = (config: unknown): GameConfig => {
-  if (typeof config !== 'object' || config === null) {
-    throw new Error('invalid config schema');
-  }
-
-  const safe = config as Partial<GameConfig>;
-  const mode = ['webgl', 'canvas'].includes(safe.renderMode!) ? safe.renderMode : 'webgl';
-  const latency = (typeof safe.maxLatencyMs === 'number' && safe.maxLatencyMs > 0) ? safe.maxLatencyMs : 150;
-
-  return { renderMode: mode as 'webgl' | 'canvas', maxLatencyMs: latency };
+export const memoizeState = <T extends (...args: any[]) => any>(fn: T) => {
+  const cache = new Map<string, ReturnType<T>>();
+  return (...args: Parameters<T>): ReturnType<T> => {
+    const key = JSON.stringify(args);
+    if (cache.has(key)) return cache.get(key)!;
+    const result = fn(...args);
+    if (cache.size >= ENGINE_CONFIG.cacheLimit) cache.clear();
+    cache.set(key, result);
+    return result;
+  };
 };
 
-export const safeLoad = (raw: string): GameConfig => {
-  try {
-    return validateConfig(JSON.parse(raw));
-  } catch (err) {
-    console.error('config fallback trigger:', err);
-    return { renderMode: 'canvas', maxLatencyMs: 500 };
-  }
+export const fastBuffer = new Float64Array(1024);
+
+export const updateBuffer = (index: number, val: number): void => {
+  fastBuffer[index % 1024] = val;
 };
 
-export const CONFIG_DEFAULTS: GameConfig = Object.freeze({
-  renderMode: 'webgl',
-  maxLatencyMs: 100
-});
+export const getBufferAvg = (): number => {
+  let sum = 0;
+  for (let i = 0; i < 1024; i++) sum += fastBuffer[i];
+  return sum / 1024;
+};
