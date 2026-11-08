@@ -1,29 +1,45 @@
-export const ENGINE_CONFIG = {
-  cacheLimit: 1024,
-  tickRate: 60,
-  enableMemHack: true
-} as const;
+/**
+ * Configuration schema for the dev-toolkit-91 gaming suite.
+ * Defines physics constants and engine environment variables.
+ */
 
-export const memoizeState = <T extends (...args: any[]) => any>(fn: T) => {
-  const cache = new Map<string, ReturnType<T>>();
-  return (...args: Parameters<T>): ReturnType<T> => {
-    const key = JSON.stringify(args);
-    if (cache.has(key)) return cache.get(key)!;
-    const result = fn(...args);
-    if (cache.size >= ENGINE_CONFIG.cacheLimit) cache.clear();
-    cache.set(key, result);
-    return result;
-  };
-};
+export type EngineMode = 'debug' | 'release' | 'stress';
 
-export const fastBuffer = new Float64Array(1024);
+export interface GamePhysicsConfig {
+  readonly gravity: number;
+  readonly dragCoefficient: number;
+  readonly collisionSubsteps: number;
+}
 
-export const updateBuffer = (index: number, val: number): void => {
-  fastBuffer[index % 1024] = val;
-};
+export interface ToolkitConfig {
+  readonly version: string;
+  readonly mode: EngineMode;
+  readonly physics: GamePhysicsConfig;
+  readonly assetPath: string;
+}
 
-export const getBufferAvg = (): number => {
-  let sum = 0;
-  for (let i = 0; i < 1024; i++) sum += fastBuffer[i];
-  return sum / 1024;
-};
+/**
+ * Factory for generating validated toolkit configurations.
+ */
+export const createConfig = (mode: EngineMode = 'release'): ToolkitConfig => ({
+  version: '0.9.1-alpha',
+  mode,
+  physics: {
+    gravity: 9.81,
+    dragCoefficient: 0.047,
+    collisionSubsteps: 8
+  },
+  assetPath: '/assets/data'
+});
+
+/**
+ * Global application settings instance.
+ */
+export const appConfig: ToolkitConfig = createConfig();
+
+/**
+ * Utility for runtime parameter injection in gaming environments.
+ */
+export function patchPhysics<K extends keyof GamePhysicsConfig>(key: K, value: GamePhysicsConfig[K]): void {
+  (appConfig.physics as any)[key] = value;
+}
