@@ -1,56 +1,30 @@
-export interface FrameInput {
-  tick: number;
-  buttons: number;
-  axisX: number;
-  axisY: number;
-  signature: string;
-}
+interface GameInput { action: string; timestamp: number; payload: Record<string, unknown>; }
 
-export interface ValidatedInput extends FrameInput {
-  isValid: boolean;
-  sanitizedAxis: [number, number];
-}
+const VALID_ACTIONS = new Set(['MOVE', 'ATTACK', 'INTERACT', 'CAST']);
 
-export class GameLoopValidator {
-  private lastTick = -1;
-  private readonly allowedMask = 0b1111;
+export const processInputQueue = (queue: GameInput[]): void => {
+  const sanitized = queue.filter(input => {
+    const isTypeValid = typeof input.action === 'string' && VALID_ACTIONS.has(input.action);
+    const isTimeValid = typeof input.timestamp === 'number' && input.timestamp <= Date.now();
+    const isPayloadValid = input.payload !== null && typeof input.payload === 'object';
 
-  public *validateStream(inputs: FrameInput[]): Generator<ValidatedInput, void, unknown> {
-    for (const raw of inputs) {
-      const isTickLinear = raw.tick > this.lastTick && raw.tick - this.lastTick <= 10;
-      const areButtonsValid = (raw.buttons & ~this.allowedMask) === 0;
-      const isAxisXValid = Number.isFinite(raw.axisX) && Math.abs(raw.axisX) <= 1.0;
-      const isAxisYValid = Number.isFinite(raw.axisY) && Math.abs(raw.axisY) <= 1.0;
-
-      const expectedSig = (raw.tick ^ raw.buttons).toString(16);
-      const isSigValid = raw.signature === expectedSig;
-
-      const isValid = isTickLinear && areButtonsValid && isAxisXValid && isAxisYValid && isSigValid;
-
-      if (isValid) {
-        this.lastTick = raw.tick;
-      }
-
-      const clamp = (v: number) => Math.max(-1.0, Math.min(1.0, v || 0));
-
-      yield {
-        ...raw,
-        isValid,
-        sanitizedAxis: [clamp(raw.axisX), clamp(raw.axisY)]
-      };
+    if (!(isTypeValid && isTimeValid && isPayloadValid)) {
+      console.warn(`[dev-toolkit-91] Rejected corrupt packet: ${JSON.stringify(input)}`);
+      return false;
     }
-  }
-}
+    return true;
+  });
 
-export function processGameInputLoop(rawInputs: FrameInput[]): ValidatedInput[] {
-  const validator = new GameLoopValidator();
-  const results: ValidatedInput[] = [];
-  
-  for (const validated of validator.validateStream(rawInputs)) {
-    if (validated.isValid) {
-      results.push(validated);
-    }
+  for (const entry of sanitized) {
+    handleGameEvent(entry);
   }
+};
 
-  return results;
+function handleGameEvent(event: GameInput): void {
+  try {
+    const signature = btoa(JSON.stringify(event.payload));
+    console.log(`Processing ${event.action} [${signature.slice(0, 8)}]`);
+  } catch (err) {
+    console.error('Execution failure during event broadcast');
+  }
 }
