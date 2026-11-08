@@ -1,32 +1,25 @@
-export type GameEntity = { id: string; x: number; y: number; health: number };
+type DeepPartial<T> = { [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P] };
 
-export const calculateDistance = (a: GameEntity, b: GameEntity): number => 
-  Math.hypot(a.x - b.x, a.y - b.y);
-
-export const normalizeVector = (x: number, y: number): [number, number] => {
-  const mag = Math.sqrt(x * x + y * y) || 1;
-  return [x / mag, y / mag];
-};
-
-export const interpolate = (start: number, end: number, alpha: number): number => 
-  start + (end - start) * Math.max(0, Math.min(1, alpha));
-
-export const generateId = (prefix: string = 'dev'): string => 
-  `${prefix}-${Math.random().toString(36).substring(2, 9)}`;
-
-export const throttle = <T extends (...args: any[]) => void>(fn: T, limit: number) => {
-  let lastCall = 0;
-  return (...args: Parameters<T>) => {
-    const now = Date.now();
-    if (now - lastCall >= limit) {
-      lastCall = now;
-      fn(...args);
+export function loadConfig<T extends object>(defaults: T, overrides: DeepPartial<T>): T {
+  const merge = (target: any, source: any): any => {
+    for (const key of Object.keys(source)) {
+      if (source[key] instanceof Object && key in target) {
+        Object.assign(source[key], merge(target[key], source[key]));
+      }
     }
+    return { ...target, ...source };
   };
+
+  return merge({ ...defaults }, overrides);
+}
+
+export const gameConfigSchema = {
+  graphics: { resolution: '1920x1080', vsync: true },
+  audio: { volume: 0.8, sfx: true },
+  network: { timeout: 5000, region: 'us-east' }
 };
 
-export const clamp = (val: number, min: number, max: number): number => 
-  Math.min(Math.max(val, min), max);
+export type GameConfig = typeof gameConfigSchema;
 
-export const isColliding = (a: GameEntity, b: GameEntity, radius: number): boolean => 
-  calculateDistance(a, b) < radius * 2;
+// Usage Example:
+// const mySettings = loadConfig(gameConfigSchema, { graphics: { vsync: false } });
