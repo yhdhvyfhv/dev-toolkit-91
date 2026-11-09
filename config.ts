@@ -1,45 +1,39 @@
-/**
- * Configuration schema for the dev-toolkit-91 gaming suite.
- * Defines physics constants and engine environment variables.
- */
-
-export type EngineMode = 'debug' | 'release' | 'stress';
-
-export interface GamePhysicsConfig {
-  readonly gravity: number;
-  readonly dragCoefficient: number;
-  readonly collisionSubsteps: number;
+export interface GameConfig {
+  renderScale: number;
+  maxPlayers: number;
+  enablePhysics: boolean;
+  shaderQuality: 'low' | 'med' | 'ultra';
 }
 
-export interface ToolkitConfig {
-  readonly version: string;
-  readonly mode: EngineMode;
-  readonly physics: GamePhysicsConfig;
-  readonly assetPath: string;
-}
+const defaults: GameConfig = {
+  renderScale: 1.0,
+  maxPlayers: 32,
+  enablePhysics: true,
+  shaderQuality: 'med'
+};
 
-/**
- * Factory for generating validated toolkit configurations.
- */
-export const createConfig = (mode: EngineMode = 'release'): ToolkitConfig => ({
-  version: '0.9.1-alpha',
-  mode,
-  physics: {
-    gravity: 9.81,
-    dragCoefficient: 0.047,
-    collisionSubsteps: 8
-  },
-  assetPath: '/assets/data'
-});
+export const loadConfig = <T extends Record<string, any>>(userSettings: T): GameConfig & T => {
+  const config = { ...defaults, ...userSettings };
+  
+  const proxy = new Proxy(config, {
+    get(target, prop) {
+      return target[prop as keyof typeof target];
+    }
+  });
 
-/**
- * Global application settings instance.
- */
-export const appConfig: ToolkitConfig = createConfig();
+  return proxy as GameConfig & T;
+};
 
-/**
- * Utility for runtime parameter injection in gaming environments.
- */
-export function patchPhysics<K extends keyof GamePhysicsConfig>(key: K, value: GamePhysicsConfig[K]): void {
-  (appConfig.physics as any)[key] = value;
-}
+export const validate = (config: GameConfig): boolean => {
+  if (config.renderScale <= 0) return false;
+  return true;
+};
+
+export const bootstrap = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('dev-toolkit-91-config') || '{}');
+    return loadConfig(saved);
+  } catch {
+    return defaults;
+  }
+};
