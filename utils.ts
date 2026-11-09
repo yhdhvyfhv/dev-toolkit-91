@@ -1,27 +1,39 @@
-import * as fs from 'fs';
-import * as path from 'path';
-
-const LOG_DIR = './logs';
-const MAX_SIZE = 1024 * 1024 * 5;
-
-export const logger = (message: string, level: 'INFO' | 'WARN' | 'ERR' = 'INFO') => {
-  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
-  const logPath = path.join(LOG_DIR, 'game-engine.log');
-  
-  if (fs.existsSync(logPath) && fs.statSync(logPath).size > MAX_SIZE) {
-    const timestamp = Date.now();
-    fs.renameSync(logPath, path.join(LOG_DIR, `game-engine-${timestamp}.log`));
+export class GameError extends Error {
+  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
+    super(message);
+    this.name = 'GameError';
   }
+}
 
-  const entry = `[${new Date().toISOString()}] [${level}] ${message}\n`;
-  fs.appendFileSync(logPath, entry);
+export const safeExecute = <T>(fn: () => T, fallback: T): T => {
+  try {
+    return fn();
+  } catch (err) {
+    console.error(`[dev-toolkit-91] Silencing edge case error: ${err instanceof Error ? err.message : 'Unknown'}`);
+    return fallback;
+  }
 };
 
-export const getLogStats = () => {
-  const logPath = path.join(LOG_DIR, 'game-engine.log');
-  try {
-    return fs.statSync(logPath).size;
-  } catch {
-    return 0;
+export const validateGameState = (state: unknown): boolean => {
+  if (state === null || typeof state !== 'object') {
+    throw new GameError('INVALID_STATE', 'State must be an object', { received: typeof state });
   }
+  return true;
+};
+
+export const wrapAsync = <T>(promise: Promise<T>): Promise<[T | null, Error | null]> => {
+  return promise
+    .then((data): [T, null] => [data, null])
+    .catch((err): [null, Error] => [null, err instanceof Error ? err : new Error(String(err))]);
+};
+
+export const retryOperation = async <T>(op: () => Promise<T>, retries = 3): Promise<T> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await op();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+    }
+  }
+  throw new GameError('RETRIES_EXHAUSTED', 'Operation failed after retries');
 };
