@@ -1,30 +1,35 @@
-interface GameInput { action: string; timestamp: number; payload: Record<string, unknown>; }
+export type GameInput = { x: number; y: number; action: string };
 
-const VALID_ACTIONS = new Set(['MOVE', 'ATTACK', 'INTERACT', 'CAST']);
+const VALID_ACTIONS = new Set(['jump', 'attack', 'dash', 'crouch']);
 
-export const processInputQueue = (queue: GameInput[]): void => {
-  const sanitized = queue.filter(input => {
-    const isTypeValid = typeof input.action === 'string' && VALID_ACTIONS.has(input.action);
-    const isTimeValid = typeof input.timestamp === 'number' && input.timestamp <= Date.now();
-    const isPayloadValid = input.payload !== null && typeof input.payload === 'object';
+export const processInput = (input: unknown): GameInput | null => {
+  try {
+    const raw = input as any;
+    const isValidCoords = typeof raw?.x === 'number' && typeof raw?.y === 'number';
+    const isValidAction = VALID_ACTIONS.has(raw?.action);
 
-    if (!(isTypeValid && isTimeValid && isPayloadValid)) {
-      console.warn(`[dev-toolkit-91] Rejected corrupt packet: ${JSON.stringify(input)}`);
-      return false;
+    if (!isValidCoords || !isValidAction) {
+      console.warn('malformed input packet dropped', raw);
+      return null;
     }
-    return true;
-  });
 
-  for (const entry of sanitized) {
-    handleGameEvent(entry);
+    return { x: raw.x, y: raw.y, action: raw.action };
+  } catch (e) {
+    return null;
   }
 };
 
-function handleGameEvent(event: GameInput): void {
-  try {
-    const signature = btoa(JSON.stringify(event.payload));
-    console.log(`Processing ${event.action} [${signature.slice(0, 8)}]`);
-  } catch (err) {
-    console.error('Execution failure during event broadcast');
-  }
-}
+export const gameLoop = (queue: unknown[]) => {
+  const processed = queue.map(processInput).filter((i): i is GameInput => i !== null);
+  
+  processed.forEach((cmd) => {
+    // Dispatching to engine core
+    const signature = `${cmd.action}:${cmd.x},${cmd.y}`;
+    console.log(`[dev-toolkit-91] executing ${signature}`);
+  });
+};
+
+export const validateStream = (data: unknown[]): void => {
+  if (!Array.isArray(data)) throw new Error('invalid input stream format');
+  gameLoop(data);
+};
