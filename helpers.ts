@@ -1,25 +1,30 @@
-type DeepPartial<T> = { [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P] };
+export type InputSchema = Record<string, 'number' | 'string' | 'boolean'>;
 
-export function loadConfig<T extends object>(defaults: T, overrides: DeepPartial<T>): T {
-  const merge = (target: any, source: any): any => {
-    for (const key of Object.keys(source)) {
-      if (source[key] instanceof Object && key in target) {
-        Object.assign(source[key], merge(target[key], source[key]));
-      }
+export const validateInput = <T extends Record<string, any>>(
+  data: T,
+  schema: InputSchema
+): T => {
+  for (const [key, type] of Object.entries(schema)) {
+    const value = data[key];
+    if (typeof value !== type) {
+      throw new Error(`[dev-toolkit-91] validation failure: ${key} expected ${type}, got ${typeof value}`);
     }
-    return { ...target, ...source };
-  };
-
-  return merge({ ...defaults }, overrides);
-}
-
-export const gameConfigSchema = {
-  graphics: { resolution: '1920x1080', vsync: true },
-  audio: { volume: 0.8, sfx: true },
-  network: { timeout: 5000, region: 'us-east' }
+  }
+  return data;
 };
 
-export type GameConfig = typeof gameConfigSchema;
+export const processGamingLoop = <T extends Record<string, any>>(
+  payload: any,
+  schema: InputSchema,
+  processor: (data: T) => void
+) => {
+  try {
+    const validated = validateInput(payload, schema);
+    processor(validated as T);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown corruption';
+    console.error(`[CRITICAL] packet drop: ${msg}`);
+  }
+};
 
-// Usage Example:
-// const mySettings = loadConfig(gameConfigSchema, { graphics: { vsync: false } });
+export const inputSanitizer = (val: string): string => val.replace(/[^a-zA-Z0-9_]/g, '');
