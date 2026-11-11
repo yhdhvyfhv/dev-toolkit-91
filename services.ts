@@ -1,35 +1,33 @@
-export type GameInput = { x: number; y: number; action: string };
-
-const VALID_ACTIONS = new Set(['jump', 'attack', 'dash', 'crouch']);
-
-export const processInput = (input: unknown): GameInput | null => {
-  try {
-    const raw = input as any;
-    const isValidCoords = typeof raw?.x === 'number' && typeof raw?.y === 'number';
-    const isValidAction = VALID_ACTIONS.has(raw?.action);
-
-    if (!isValidCoords || !isValidAction) {
-      console.warn('malformed input packet dropped', raw);
-      return null;
+export async function withRetry<T>(task: () => Promise<T>, attempts: number = 3, delay: number = 1000): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await task();
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, i)));
+      }
     }
-
-    return { x: raw.x, y: raw.y, action: raw.action };
-  } catch (e) {
-    return null;
   }
-};
+  throw lastError;
+}
 
-export const gameLoop = (queue: unknown[]) => {
-  const processed = queue.map(processInput).filter((i): i is GameInput => i !== null);
-  
-  processed.forEach((cmd) => {
-    // Dispatching to engine core
-    const signature = `${cmd.action}:${cmd.x},${cmd.y}`;
-    console.log(`[dev-toolkit-91] executing ${signature}`);
+export const fetchGameData = async <T>(url: string): Promise<T> => {
+  return withRetry(async () => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json() as Promise<T>;
   });
 };
 
-export const validateStream = (data: unknown[]): void => {
-  if (!Array.isArray(data)) throw new Error('invalid input stream format');
-  gameLoop(data);
+export const broadcastPayload = async (data: Record<string, any>): Promise<void> => {
+  await withRetry(async () => {
+    const res = await fetch('/api/telemetry', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw new Error('Broadcast failed');
+  }, 5, 500);
 };
