@@ -1,33 +1,34 @@
-export async function withRetry<T>(task: () => Promise<T>, attempts: number = 3, delay: number = 1000): Promise<T> {
-  let lastError: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await task();
-    } catch (err) {
-      lastError = err;
-      if (i < attempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, i)));
-      }
-    }
-  }
-  throw lastError;
+export type GameState = 'lobby' | 'active' | 'paused' | 'ended';
+
+interface GameEngine {
+  tick: (delta: number) => void;
+  cleanup: () => void;
 }
 
-export const fetchGameData = async <T>(url: string): Promise<T> => {
-  return withRetry(async () => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json() as Promise<T>;
-  });
-};
+class SessionManager implements GameEngine {
+  private registry: Map<string, () => void> = new Map();
 
-export const broadcastPayload = async (data: Record<string, any>): Promise<void> => {
-  await withRetry(async () => {
-    const res = await fetch('/api/telemetry', {
-      method: 'POST',
-      body: JSON.stringify(data),
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (!res.ok) throw new Error('Broadcast failed');
-  }, 5, 500);
+  public register(id: string, cleanupFn: () => void): void {
+    this.registry.set(id, cleanupFn);
+  }
+
+  public tick(delta: number): void {
+    console.log(`Processing tick with delta: ${delta}`);
+  }
+
+  public cleanup(): void {
+    for (const [id, clean] of this.registry.entries()) {
+      clean();
+      this.registry.delete(id);
+    }
+    console.log('Session memory cleared');
+  }
+}
+
+export const engine = new SessionManager();
+
+export const initializeSystem = (state: GameState) => {
+  console.log(`System init sequence for mode: ${state}`);
+  engine.register('graphics', () => console.log('Graphics heap purged'));
+  engine.register('physics', () => console.log('Physics collision cache cleared'));
 };
