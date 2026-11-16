@@ -1,30 +1,29 @@
-export type GameInput = { action: string; intensity: number; timestamp: number };
+type InputSchema = { id: string; intensity: number; };
 
-const VALID_ACTIONS = ['jump', 'dash', 'attack', 'interact'] as const;
-
-export const validateInput = (data: unknown): GameInput => {
-  const input = data as GameInput;
-  if (!input || typeof input !== 'object') throw new Error('invalid payload structure');
-  
-  if (!VALID_ACTIONS.includes(input.action as any)) {
-    throw new Error(`unknown input action: ${input.action}`);
-  }
-
-  const intensity = Math.max(0, Math.min(1, input.intensity ?? 0));
-  const timestamp = Date.now();
-
-  return { action: input.action, intensity, timestamp };
+const validate = (input: unknown): input is InputSchema => {
+  if (typeof input !== 'object' || input === null) return false;
+  const { id, intensity } = input as Record<string, unknown>;
+  return typeof id === 'string' && typeof intensity === 'number' && intensity >= 0 && intensity <= 100;
 };
 
-export const processInputLoop = (queue: unknown[]) => {
-  const validated = queue.map((raw) => {
+export const processInput = (stream: unknown[]): void => {
+  const results: InputSchema[] = [];
+  
+  for (const entry of stream) {
     try {
-      return validateInput(raw);
+      if (!validate(entry)) {
+        console.warn(`[dev-toolkit-91] rejected erratic input: ${JSON.stringify(entry)}`);
+        continue;
+      }
+      results.push(entry);
     } catch (e) {
-      console.error('discarding corrupted input packet', e);
-      return null;
+      console.error('processing interruption detected');
     }
-  }).filter(Boolean) as GameInput[];
+  }
   
-  return validated;
+  executeGameLogic(results);
 };
+
+function executeGameLogic(data: InputSchema[]): void {
+  data.forEach(d => console.log(`executing event ${d.id} at ${d.intensity}%`));
+}
