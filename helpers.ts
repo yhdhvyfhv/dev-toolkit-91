@@ -1,31 +1,35 @@
-export const memoizeCompute = <T, R>(fn: (arg: T) => R): (arg: T) => R => {
-  const cache = new Map<T, R>();
-  return (arg: T): R => {
-    if (cache.has(arg)) return cache.get(arg)!;
-    const result = fn(arg);
-    cache.set(arg, result);
-    if (cache.size > 1024) cache.delete(cache.keys().next().value!);
-    return result;
-  };
+export class GamingError extends Error {
+  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
+    super(message);
+    this.name = 'GamingError';
+  }
+}
+
+export const safeExecute = <T>(fn: () => T, fallback: T): T => {
+  try {
+    return fn();
+  } catch (err) {
+    console.error(`[dev-toolkit-91] Execution fault: ${err instanceof Error ? err.message : 'unknown'}`);
+    return fallback;
+  }
 };
 
-export const batchUpdate = <T>(items: T[], processor: (batch: T[]) => void, size: number = 50): void => {
-  let i = 0;
-  const run = () => {
-    const end = Math.min(i + size, items.length);
-    processor(items.slice(i, end));
-    i = end;
-    if (i < items.length) setTimeout(run, 0);
-  };
-  run();
+export const assertPlayerState = (state: unknown): asserts state is { id: string } => {
+  if (!state || typeof state !== 'object' || !('id' in state)) {
+    throw new GamingError('INVALID_STATE', 'Player state corruption detected', { state });
+  }
 };
 
-export const getFrameTime = (): number => {
-  const now = performance.now();
-  getFrameTime.prev = getFrameTime.prev || now;
-  const delta = now - getFrameTime.prev;
-  getFrameTime.prev = now;
-  return delta;
+export const robustFetch = async <T>(url: string, retries = 3): Promise<T | null> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      if (i === retries - 1) return null;
+      await new Promise(r => setTimeout(r, 100 * Math.pow(2, i)));
+    }
+  }
+  return null;
 };
-
-getFrameTime.prev = 0;
