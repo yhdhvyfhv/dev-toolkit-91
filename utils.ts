@@ -1,29 +1,33 @@
-export type GameEntity = { id: string; state: 'active' | 'cooldown' | 'idle'; ticks: number };
+export type GameEntity = { id: string; x: number; y: number; active: boolean };
 
-export const getActiveEntities = (list: GameEntity[]): GameEntity[] => list.filter((e) => e.state === 'active');
-
-export const cycleRegistry = <T extends GameEntity>(registry: Map<string, T>, tickDelta: number): Map<string, T> => {
-  for (const [key, entity] of registry) {
-    const updatedTicks = entity.ticks + tickDelta;
-    if (updatedTicks >= 100) {
-      registry.set(key, { ...entity, ticks: 0, state: 'cooldown' });
-    } else {
-      registry.set(key, { ...entity, ticks: updatedTicks });
-    }
-  }
-  return registry;
+export const sanitizePositions = (entities: GameEntity[]): GameEntity[] => {
+  return entities.filter((e) => e.active).map((e) => ({
+    ...e,
+    x: Math.round(e.x * 100) / 100,
+    y: Math.round(e.y * 100) / 100
+  }));
 };
 
-export const purgeStale = (registry: Map<string, GameEntity>): void => {
-  for (const [key, entity] of registry) {
-    if (entity.state === 'cooldown' && entity.ticks > 50) {
-      registry.delete(key);
-    }
-  }
-};
+export class EntityPool {
+  private pool: Map<string, GameEntity> = new Map();
 
-export const createBatchProcessor = <T>(batchSize: number) => (items: T[]): T[][] => {
-  return Array.from({ length: Math.ceil(items.length / batchSize) }, (_, i) =>
-    items.slice(i * batchSize, i * batchSize + batchSize)
-  );
+  constructor(initial: GameEntity[]) {
+    initial.forEach((e) => this.pool.set(e.id, e));
+  }
+
+  public broadcastUpdate(delta: number): GameEntity[] {
+    return Array.from(this.pool.values()).map((e) => ({
+      ...e,
+      x: e.x + delta,
+      y: e.y + delta
+    }));
+  }
+
+  public get activeCount(): number {
+    return [...this.pool.values()].filter((e) => e.active).length;
+  }
+}
+
+export const createGameStateLogger = (prefix: string) => {
+  return (msg: string) => console.log(`[${prefix.toUpperCase()}]: ${msg}`);
 };
