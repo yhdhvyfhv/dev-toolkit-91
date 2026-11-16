@@ -1,33 +1,29 @@
-export type GameEntity = { id: string; x: number; y: number; active: boolean };
-
-export const sanitizePositions = (entities: GameEntity[]): GameEntity[] => {
-  return entities.filter((e) => e.active).map((e) => ({
-    ...e,
-    x: Math.round(e.x * 100) / 100,
-    y: Math.round(e.y * 100) / 100
-  }));
+export type GameEntity = {
+  id: string;
+  health: number;
+  tags: string[];
 };
 
-export class EntityPool {
-  private pool: Map<string, GameEntity> = new Map();
+export const sanitizeGameState = <T extends GameEntity>(
+  data: T[],
+  threshold: number = 0
+): Map<string, T> => {
+  return new Map(
+    data
+      .filter((entity) => entity.health > threshold)
+      .map((entity) => [entity.id, entity]
+    )
+  );
+};
 
-  constructor(initial: GameEntity[]) {
-    initial.forEach((e) => this.pool.set(e.id, e));
-  }
+export const mutateHealth = (entity: GameEntity, delta: number): number => {
+  const newValue = entity.health + delta;
+  return Math.max(0, Math.min(100, newValue));
+};
 
-  public broadcastUpdate(delta: number): GameEntity[] {
-    return Array.from(this.pool.values()).map((e) => ({
-      ...e,
-      x: e.x + delta,
-      y: e.y + delta
-    }));
-  }
-
-  public get activeCount(): number {
-    return [...this.pool.values()].filter((e) => e.active).length;
-  }
-}
-
-export const createGameStateLogger = (prefix: string) => {
-  return (msg: string) => console.log(`[${prefix.toUpperCase()}]: ${msg}`);
+export const extractByTag = (data: GameEntity[], tag: string): GameEntity[] => {
+  return data.reduce((acc: GameEntity[], entity) => {
+    if (entity.tags.includes(tag)) acc.push(entity);
+    return acc;
+  }, []);
 };
