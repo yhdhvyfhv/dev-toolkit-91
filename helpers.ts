@@ -1,35 +1,34 @@
-export class GamingError extends Error {
-  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
-    super(message);
-    this.name = 'GamingError';
-  }
-}
+export const memoizeCompute = <T extends any[], R>(fn: (...args: T) => R, ttl: number = 5000): (...args: T) => R => {
+  const cache = new Map<string, { value: R; expiry: number }>();
+  return (...args: T): R => {
+    const key = JSON.stringify(args);
+    const now = Date.now();
+    const cached = cache.get(key);
 
-export const safeExecute = <T>(fn: () => T, fallback: T): T => {
-  try {
-    return fn();
-  } catch (err) {
-    console.error(`[dev-toolkit-91] Execution fault: ${err instanceof Error ? err.message : 'unknown'}`);
-    return fallback;
-  }
-};
-
-export const assertPlayerState = (state: unknown): asserts state is { id: string } => {
-  if (!state || typeof state !== 'object' || !('id' in state)) {
-    throw new GamingError('INVALID_STATE', 'Player state corruption detected', { state });
-  }
-};
-
-export const robustFetch = async <T>(url: string, retries = 3): Promise<T | null> => {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    } catch (e) {
-      if (i === retries - 1) return null;
-      await new Promise(r => setTimeout(r, 100 * Math.pow(2, i)));
+    if (cached && cached.expiry > now) {
+      return cached.value;
     }
+
+    const result = fn(...args);
+    cache.set(key, { value: result, expiry: now + ttl });
+    return result;
+  };
+};
+
+export const batchUpdate = <T>(items: T[], processor: (batch: T[]) => void, chunkSize: number = 50): void => {
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    requestIdleCallback(() => processor(chunk));
   }
-  return null;
+};
+
+export const frameBudgetThrottler = (fn: Function, budget: number = 16) => {
+  let last = performance.now();
+  return (...args: any[]) => {
+    const now = performance.now();
+    if (now - last > budget) {
+      fn(...args);
+      last = now;
+    }
+  };
 };
