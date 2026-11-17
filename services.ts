@@ -1,37 +1,28 @@
-export async function retryable<T>(
-  operation: () => Promise<T>,
-  retries: number = 3,
-  delay: number = 1000
-): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await operation();
-    } catch (err) {
-      lastError = err;
-      if (attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, attempt)));
-      }
-    }
+export type GameState = { score: number; level: number };
+
+export class GamingEngineError extends Error {
+  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
+    super(message);
+    this.name = 'GamingEngineError';
   }
-  throw lastError;
 }
 
-export const fetchGameState = async (id: string): Promise<any> => {
-  return await retryable(async () => {
-    const response = await fetch(`/api/games/${id}`);
-    if (!response.ok) throw new Error(`Status ${response.status}`);
-    return response.json();
-  });
+export const safeLoadGameState = (data: unknown): GameState => {
+  try {
+    if (typeof data !== 'object' || data === null) throw new Error('Malformed input');
+    const state = data as GameState;
+    if (typeof state.score !== 'number' || state.score < 0) throw new Error('Invalid score');
+    if (typeof state.level !== 'number' || state.level < 1) throw new Error('Invalid level');
+    return state;
+  } catch (err) {
+    throw new GamingEngineError('ERR_STATE_CORRUPT', 'Critical data integrity failure', { data, error: err });
+  }
 };
 
-export const broadcastPayload = async (data: Record<string, any>): Promise<void> => {
-  const task = async () => {
-    const res = await fetch('/api/broadcast', { 
-      method: 'POST', 
-      body: JSON.stringify(data) 
-    });
-    if (!res.ok) throw new Error('Broadcast failed');
-  };
-  await retryable(task, 5, 500);
+export const recoverState = (error: unknown): GameState => {
+  if (error instanceof GamingEngineError && error.code === 'ERR_STATE_CORRUPT') {
+    console.warn('Attempting emergency state recovery...');
+    return { score: 0, level: 1 };
+  }
+  throw error instanceof Error ? error : new Error('Unknown catastrophic failure');
 };
