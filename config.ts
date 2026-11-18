@@ -1,29 +1,28 @@
-type InputSchema = { id: string; intensity: number; };
-
-const validate = (input: unknown): input is InputSchema => {
-  if (typeof input !== 'object' || input === null) return false;
-  const { id, intensity } = input as Record<string, unknown>;
-  return typeof id === 'string' && typeof intensity === 'number' && intensity >= 0 && intensity <= 100;
-};
-
-export const processInput = (stream: unknown[]): void => {
-  const results: InputSchema[] = [];
-  
-  for (const entry of stream) {
-    try {
-      if (!validate(entry)) {
-        console.warn(`[dev-toolkit-91] rejected erratic input: ${JSON.stringify(entry)}`);
-        continue;
-      }
-      results.push(entry);
-    } catch (e) {
-      console.error('processing interruption detected');
-    }
-  }
-  
-  executeGameLogic(results);
-};
-
-function executeGameLogic(data: InputSchema[]): void {
-  data.forEach(d => console.log(`executing event ${d.id} at ${d.intensity}%`));
+export interface GameConfig {
+  renderScale: number;
+  audioEnabled: boolean;
+  shaderLevel: 'low' | 'medium' | 'ultra';
+  maxEntities: number;
 }
+
+const DEFAULTS: GameConfig = {
+  renderScale: 1.0,
+  audioEnabled: true,
+  shaderLevel: 'medium',
+  maxEntities: 1024
+};
+
+export const loadConfig = <T extends Partial<GameConfig>>(override: T): GameConfig => {
+  return Object.assign({}, DEFAULTS, override) as GameConfig;
+};
+
+export const validateConfig = (config: GameConfig): boolean => {
+  if (config.maxEntities < 0) return false;
+  const validScales = [0.5, 1.0, 2.0];
+  return validScales.includes(config.renderScale);
+};
+
+export const mergeGameSettings = (input: Partial<GameConfig>): GameConfig => {
+  const config = loadConfig(input);
+  return validateConfig(config) ? config : DEFAULTS;
+};
