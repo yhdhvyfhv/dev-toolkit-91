@@ -1,34 +1,31 @@
-export const memoizeCompute = <T extends any[], R>(fn: (...args: T) => R, ttl: number = 5000): (...args: T) => R => {
-  const cache = new Map<string, { value: R; expiry: number }>();
-  return (...args: T): R => {
-    const key = JSON.stringify(args);
-    const now = Date.now();
-    const cached = cache.get(key);
+type Config = { resolution: string; fps: number; vsync: boolean };
 
-    if (cached && cached.expiry > now) {
-      return cached.value;
-    }
-
-    const result = fn(...args);
-    cache.set(key, { value: result, expiry: now + ttl });
-    return result;
-  };
+const DEFAULT_CONFIG: Config = {
+  resolution: '1920x1080',
+  fps: 60,
+  vsync: true,
 };
 
-export const batchUpdate = <T>(items: T[], processor: (batch: T[]) => void, chunkSize: number = 50): void => {
-  for (let i = 0; i < items.length; i += chunkSize) {
-    const chunk = items.slice(i, i + chunkSize);
-    requestIdleCallback(() => processor(chunk));
+export const loadConfig = <T extends Partial<Config>>(overrides: T): Config & T => {
+  const config = { ...DEFAULT_CONFIG, ...overrides };
+  
+  const validate = (cfg: any) => {
+    if (cfg.fps < 30) cfg.fps = 30;
+    return cfg;
+  };
+
+  return validate(config);
+};
+
+export const persistConfig = (config: Config): void => {
+  try {
+    localStorage.setItem('game_config', JSON.stringify(config));
+  } catch (e) {
+    console.warn('storage access denied, using memory session');
   }
 };
 
-export const frameBudgetThrottler = (fn: Function, budget: number = 16) => {
-  let last = performance.now();
-  return (...args: any[]) => {
-    const now = performance.now();
-    if (now - last > budget) {
-      fn(...args);
-      last = now;
-    }
-  };
+export const getConfig = (): Config => {
+  const raw = localStorage.getItem('game_config');
+  return raw ? JSON.parse(raw) : DEFAULT_CONFIG;
 };
