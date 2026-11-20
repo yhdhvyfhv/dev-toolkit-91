@@ -1,33 +1,32 @@
-export class GamingError extends Error {
-  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
-    super(message);
-    this.name = 'GamingError';
-  }
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface LoggerConfig {
+  logDir: string;
+  maxSize: number;
 }
 
-export const safeExecute = <T>(fn: () => T, fallback: T): T => {
-  try {
-    return fn();
-  } catch (err) {
-    console.error(`[dev-toolkit-91] Execution fault: ${err instanceof Error ? err.message : 'unknown'}`);
-    return fallback;
-  }
-};
+export const createLogger = ({ logDir, maxSize }: LoggerConfig) => {
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  const logFile = path.join(logDir, 'game-engine.log');
 
-export const assertResource = (resource: unknown, id: string): void => {
-  if (resource === null || resource === undefined) {
-    throw new GamingError('MISSING_ASSET', `Asset ${id} failed to load in memory`, { id });
-  }
-};
+  const rotate = () => {
+    const backup = path.join(logDir, `game-engine.${Date.now()}.old`);
+    fs.renameSync(logFile, backup);
+  };
 
-export const retryOperation = async <T>(op: () => Promise<T>, retries = 3): Promise<T> => {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await op();
-    } catch (e) {
-      if (i === retries - 1) throw e;
-      await new Promise((res) => setTimeout(res, Math.pow(2, i) * 100));
+  return {
+    info: (msg: string) => {
+      const entry = `[${new Date().toISOString()}] INFO: ${msg}\n`;
+      if (fs.existsSync(logFile) && fs.statSync(logFile).size > maxSize) {
+        rotate();
+      }
+      fs.appendFileSync(logFile, entry);
     }
-  }
-  throw new GamingError('RETRY_LIMIT', 'Operation failed after maximum attempts');
+  };
 };
+
+export const logger = createLogger({
+  logDir: path.join(process.cwd(), 'logs'),
+  maxSize: 1024 * 1024 * 5
+});
