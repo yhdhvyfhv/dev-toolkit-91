@@ -1,31 +1,36 @@
-type Config = { resolution: string; fps: number; vsync: boolean };
+export type GameEntity = { id: string; state: 'active' | 'stale' | 'deleted' };
 
-const DEFAULT_CONFIG: Config = {
-  resolution: '1920x1080',
-  fps: 60,
-  vsync: true,
+export const sanitizeEntityRegistry = (entities: GameEntity[]): GameEntity[] => {
+  const activeEntities = entities.filter(e => e.state === 'active');
+  const lookup = new Set(activeEntities.map(e => e.id));
+
+  return activeEntities.map(entity => ({
+    ...entity,
+    id: entity.id.trim().toLowerCase(),
+    state: lookup.has(entity.id) ? 'active' : 'stale'
+  }));
 };
 
-export const loadConfig = <T extends Partial<Config>>(overrides: T): Config & T => {
-  const config = { ...DEFAULT_CONFIG, ...overrides };
-  
-  const validate = (cfg: any) => {
-    if (cfg.fps < 30) cfg.fps = 30;
-    return cfg;
+export const batchProcess = <T>(items: T[], chunkSize: number): T[][] => {
+  return Array.from({ length: Math.ceil(items.length / chunkSize) }, (_, i) =>
+    items.slice(i * chunkSize, i * chunkSize + chunkSize)
+  );
+};
+
+export const generateStateHash = (input: Record<string, any>): string => {
+  return Object.entries(input)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}:${v}`)
+    .join('|');
+};
+
+export const purgeStaleData = (entities: GameEntity[]): void => {
+  entities.splice(0, entities.length, ...entities.filter(e => e.state !== 'stale'));
+};
+
+export const wrapEngineAction = <T extends (...args: any[]) => any>(fn: T) => {
+  return (...args: Parameters<T>): ReturnType<T> => {
+    console.log(`[dev-toolkit-91] executing: ${fn.name}`);
+    return fn(...args);
   };
-
-  return validate(config);
-};
-
-export const persistConfig = (config: Config): void => {
-  try {
-    localStorage.setItem('game_config', JSON.stringify(config));
-  } catch (e) {
-    console.warn('storage access denied, using memory session');
-  }
-};
-
-export const getConfig = (): Config => {
-  const raw = localStorage.getItem('game_config');
-  return raw ? JSON.parse(raw) : DEFAULT_CONFIG;
 };
