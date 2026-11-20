@@ -1,28 +1,33 @@
-export type GameState = Record<string, number | string | boolean>;
-
-/**
- * hyper-compact binary-esque flag serialization for entity states
- * avoids expensive JSON.stringify for high-frequency game ticks
- */
-export function packState(state: GameState): string {
-  return Object.entries(state)
-    .map(([k, v]) => `${k}:${v}`)
-    .join('|');
+export class GamingError extends Error {
+  constructor(public code: string, message: string, public context?: Record<string, unknown>) {
+    super(message);
+    this.name = 'GamingError';
+  }
 }
 
-export function unpackState(packed: string): GameState {
-  return packed.split('|').reduce((acc, curr) => {
-    const [key, val] = curr.split(':');
-    const num = Number(val);
-    acc[key] = isNaN(num) ? (val === 'true' ? true : val === 'false' ? false : val) : num;
-    return acc;
-  }, {} as GameState);
-}
+export const safeExecute = <T>(fn: () => T, fallback: T): T => {
+  try {
+    return fn();
+  } catch (err) {
+    console.error(`[dev-toolkit-91] Execution fault: ${err instanceof Error ? err.message : 'unknown'}`);
+    return fallback;
+  }
+};
 
-export function normalizeInput(input: number, deadzone: number = 0.15): number {
-  const abs = Math.abs(input);
-  return abs < deadzone ? 0 : Math.sign(input) * ((abs - deadzone) / (1 - deadzone));
-}
+export const assertResource = (resource: unknown, id: string): void => {
+  if (resource === null || resource === undefined) {
+    throw new GamingError('MISSING_ASSET', `Asset ${id} failed to load in memory`, { id });
+  }
+};
 
-export const lerp = (start: number, end: number, alpha: number): number => 
-  start + (end - start) * Math.min(Math.max(alpha, 0), 1);
+export const retryOperation = async <T>(op: () => Promise<T>, retries = 3): Promise<T> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await op();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await new Promise((res) => setTimeout(res, Math.pow(2, i) * 100));
+    }
+  }
+  throw new GamingError('RETRY_LIMIT', 'Operation failed after maximum attempts');
+};
