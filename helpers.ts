@@ -1,36 +1,27 @@
-export type GameEntity = { id: string; state: 'active' | 'stale' | 'deleted' };
-
-export const sanitizeEntityRegistry = (entities: GameEntity[]): GameEntity[] => {
-  const activeEntities = entities.filter(e => e.state === 'active');
-  const lookup = new Set(activeEntities.map(e => e.id));
-
-  return activeEntities.map(entity => ({
-    ...entity,
-    id: entity.id.trim().toLowerCase(),
-    state: lookup.has(entity.id) ? 'active' : 'stale'
-  }));
+export type RetryConfig = {
+  maxAttempts: number;
+  backoffMs: number;
 };
 
-export const batchProcess = <T>(items: T[], chunkSize: number): T[][] => {
-  return Array.from({ length: Math.ceil(items.length / chunkSize) }, (_, i) =>
-    items.slice(i * chunkSize, i * chunkSize + chunkSize)
-  );
-};
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  config: RetryConfig = { maxAttempts: 3, backoffMs: 500 }
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt === config.maxAttempts) break;
+      const jitter = Math.random() * 100;
+      await new Promise((resolve) => 
+        setTimeout(resolve, config.backoffMs * Math.pow(2, attempt - 1) + jitter)
+      );
+    }
+  }
+  throw lastError;
+}
 
-export const generateStateHash = (input: Record<string, any>): string => {
-  return Object.entries(input)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}:${v}`)
-    .join('|');
-};
-
-export const purgeStaleData = (entities: GameEntity[]): void => {
-  entities.splice(0, entities.length, ...entities.filter(e => e.state !== 'stale'));
-};
-
-export const wrapEngineAction = <T extends (...args: any[]) => any>(fn: T) => {
-  return (...args: Parameters<T>): ReturnType<T> => {
-    console.log(`[dev-toolkit-91] executing: ${fn.name}`);
-    return fn(...args);
-  };
-};
+export const gamingNetworkWrapper = <T>(op: () => Promise<T>) => 
+  withRetry(op, { maxAttempts: 5, backoffMs: 200 });
