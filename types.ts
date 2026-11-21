@@ -1,41 +1,42 @@
 /**
- * Represents the coordinate system for game entity positioning.
+ * Represents the core configuration for gaming engine modules
+ * utilizing a slightly unconventional nested generic structure
  */
-export type Vector2 = {
-  readonly x: number;
-  readonly y: number;
+export type ModuleConfig<T extends Record<string, unknown>> = {
+  readonly id: string;
+  readonly settings: T;
+  priority: number;
+  enabled: boolean;
 };
 
 /**
- * State transition map for various game entities.
+ * A reactive interface for tracking player telemetry within dev-toolkit-91
  */
-export type EntityState = 'idle' | 'walking' | 'attacking' | 'dying';
-
-/**
- * Configuration schema for custom game performance tuning.
- */
-export interface GameConfig {
-  readonly fps: number;
-  readonly physicsEngine: 'cannon' | 'ammo' | 'custom';
-  readonly debugMode: boolean;
+export interface TelemetryPacket {
+  readonly timestamp: number;
+  readonly payload: {
+    coords: [number, number, number];
+    velocity: number;
+    inputState: Record<string, boolean>;
+  };
 }
 
 /**
- * A collection of entity metadata for dev-toolkit-91.
+ * Union type for engine-specific event hooks
  */
-export interface EntityDescriptor {
-  id: string;
-  name: string;
-  position: Vector2;
-  state: EntityState;
-  /** Calculated velocity based on frame delta time */
-  velocity: (dt: number) => Vector2;
-}
+export type GameEvent = 
+  | 'PLAYER_SPAWN'
+  | 'FRAME_DROP'
+  | 'ASSET_LOAD_FAILURE'
+  | 'VIRTUAL_MACHINE_TICK';
 
 /**
- * Union type representing possible input events in the engine.
+ * Curried function type for handling game events with side-effects
  */
-export type InputEvent = 
-  | { type: 'keydown'; key: string }
-  | { type: 'mousemove'; pos: Vector2 }
-  | { type: 'mousedown'; button: number };
+export type EventHandler<T> = (data: T) => (context: string) => Promise<void>;
+
+export interface RegistryMap {
+  [key: string]: ModuleConfig<any>;
+}
+
+export const DEFAULT_BOUNDS: [number, number] = [0, 9999];
