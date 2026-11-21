@@ -1,28 +1,42 @@
-export interface GameConfig {
-  renderScale: number;
-  audioEnabled: boolean;
-  shaderLevel: 'low' | 'medium' | 'ultra';
-  maxEntities: number;
+interface PerformanceConfig {
+  frameBudgetMs: number;
+  cacheLimit: number;
+  isAggressivePruningEnabled: boolean;
 }
 
-const DEFAULTS: GameConfig = {
-  renderScale: 1.0,
-  audioEnabled: true,
-  shaderLevel: 'medium',
-  maxEntities: 1024
+export const engineConfig: PerformanceConfig = {
+  frameBudgetMs: 16.67,
+  cacheLimit: 1024,
+  isAggressivePruningEnabled: true
 };
 
-export const loadConfig = <T extends Partial<GameConfig>>(override: T): GameConfig => {
-  return Object.assign({}, DEFAULTS, override) as GameConfig;
+export const getMemoryPoolSize = (base: number): number => {
+  const multiplier = typeof window !== 'undefined' && (window.navigator as any).deviceMemory || 4;
+  return Math.floor(base * Math.min(multiplier, 8));
 };
 
-export const validateConfig = (config: GameConfig): boolean => {
-  if (config.maxEntities < 0) return false;
-  const validScales = [0.5, 1.0, 2.0];
-  return validScales.includes(config.renderScale);
-};
+export class DynamicBufferManager {
+  private buffer: Float32Array;
+  constructor(size: number) {
+    this.buffer = new Float32Array(getMemoryPoolSize(size));
+  }
+  
+  public getSlice(offset: number, length: number): Float32Array {
+    return this.buffer.subarray(offset, offset + length);
+  }
 
-export const mergeGameSettings = (input: Partial<GameConfig>): GameConfig => {
-  const config = loadConfig(input);
-  return validateConfig(config) ? config : DEFAULTS;
+  public flush(): void {
+    this.buffer.fill(0);
+  }
+}
+
+export const frameThrottle = <T extends (...args: any[]) => void>(fn: T, limit: number) => {
+  let lastCall = 0;
+  return (...args: Parameters<T>) => {
+    const now = performance.now();
+    if (now - lastCall >= limit) {
+      lastCall = now;
+      fn(...args);
+    }
+  };
 };
