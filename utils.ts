@@ -1,32 +1,28 @@
-import * as fs from 'fs';
-import * as path from 'path';
+export type GameState = 'lobby' | 'playing' | 'paused' | 'gameover';
 
-interface LoggerConfig {
-  logDir: string;
-  maxSize: number;
+export interface EntityState {
+  id: string;
+  health: number;
+  position: [number, number];
 }
 
-export const createLogger = ({ logDir, maxSize }: LoggerConfig) => {
-  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-  const logFile = path.join(logDir, 'game-engine.log');
-
-  const rotate = () => {
-    const backup = path.join(logDir, `game-engine.${Date.now()}.old`);
-    fs.renameSync(logFile, backup);
-  };
-
-  return {
-    info: (msg: string) => {
-      const entry = `[${new Date().toISOString()}] INFO: ${msg}\n`;
-      if (fs.existsSync(logFile) && fs.statSync(logFile).size > maxSize) {
-        rotate();
-      }
-      fs.appendFileSync(logFile, entry);
-    }
-  };
+export const mutateEntity = <T extends EntityState>(entity: T, delta: Partial<T>): T => {
+  return { ...entity, ...delta };
 };
 
-export const logger = createLogger({
-  logDir: path.join(process.cwd(), 'logs'),
-  maxSize: 1024 * 1024 * 5
-});
+export const calculateDistance = (a: EntityState, b: EntityState): number => {
+  const dx = a.position[0] - b.position[0];
+  const dy = a.position[1] - b.position[1];
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+export const batchUpdate = <T extends EntityState>(entities: T[], updates: Record<string, Partial<T>>): T[] => {
+  return entities.map(entity => 
+    updates[entity.id] ? { ...entity, ...updates[entity.id] } : entity
+  );
+};
+
+export const parseTickRate = (raw: string | number): number => {
+  const parsed = typeof raw === 'string' ? parseFloat(raw) : raw;
+  return isNaN(parsed) ? 60 : Math.max(1, Math.min(parsed, 144));
+};
