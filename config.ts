@@ -1,42 +1,29 @@
-interface PerformanceConfig {
-  frameBudgetMs: number;
-  cacheLimit: number;
-  isAggressivePruningEnabled: boolean;
+export interface GameConfig {
+  renderScale: number;
+  maxPlayers: number;
+  debugMode: boolean;
+  serverUrl: string;
 }
 
-export const engineConfig: PerformanceConfig = {
-  frameBudgetMs: 16.67,
-  cacheLimit: 1024,
-  isAggressivePruningEnabled: true
+const defaults: GameConfig = {
+  renderScale: 1.0,
+  maxPlayers: 32,
+  debugMode: false,
+  serverUrl: 'ws://localhost:8080'
 };
 
-export const getMemoryPoolSize = (base: number): number => {
-  const multiplier = typeof window !== 'undefined' && (window.navigator as any).deviceMemory || 4;
-  return Math.floor(base * Math.min(multiplier, 8));
+export const loadConfig = <T extends Partial<GameConfig>>(override: T): GameConfig & T => {
+  const merged = { ...defaults, ...override };
+  return Object.freeze(merged) as GameConfig & T;
 };
 
-export class DynamicBufferManager {
-  private buffer: Float32Array;
-  constructor(size: number) {
-    this.buffer = new Float32Array(getMemoryPoolSize(size));
-  }
-  
-  public getSlice(offset: number, length: number): Float32Array {
-    return this.buffer.subarray(offset, offset + length);
-  }
+export const validateConfig = (config: GameConfig): void => {
+  if (config.renderScale <= 0) throw new Error('invalid scale');
+  if (config.maxPlayers < 1) throw new Error('invalid player count');
+};
 
-  public flush(): void {
-    this.buffer.fill(0);
-  }
-}
-
-export const frameThrottle = <T extends (...args: any[]) => void>(fn: T, limit: number) => {
-  let lastCall = 0;
-  return (...args: Parameters<T>) => {
-    const now = performance.now();
-    if (now - lastCall >= limit) {
-      lastCall = now;
-      fn(...args);
-    }
-  };
+export const createSafeConfig = (input: Partial<GameConfig>): GameConfig => {
+  const config = loadConfig(input);
+  validateConfig(config);
+  return config;
 };
