@@ -1,36 +1,31 @@
-interface GameConfig {
-  renderScale: number;
-  audioVolume: number;
-  enableDebug: boolean;
-}
-
-const DEFAULT_CONFIG: GameConfig = {
-  renderScale: 1.0,
-  audioVolume: 0.8,
-  enableDebug: false,
+export type RetryConfig = {
+  maxAttempts: number;
+  delayMs: number;
 };
 
-export const loadConfiguration = <T extends Partial<GameConfig>>(userConfig: T): GameConfig => {
-  const merged = { ...DEFAULT_CONFIG, ...userConfig };
-  
-  const validated: GameConfig = {
-    renderScale: Math.max(0.5, Math.min(2.0, merged.renderScale!)),
-    audioVolume: Math.max(0, Math.min(1.0, merged.audioVolume!)),
-    enableDebug: !!merged.enableDebug,
-  };
+export const withRetry = async <T>(
+  operation: () => Promise<T>,
+  config: RetryConfig = { maxAttempts: 3, delayMs: 1000 }
+): Promise<T> => {
+  let lastError: unknown;
 
-  console.log('[dev-toolkit-91] Configuration integrity verified');
-  return validated;
-};
-
-export const resetToDefaults = (): GameConfig => {
-  return { ...DEFAULT_CONFIG };
-};
-
-export const syncConfigToLocalStorage = (config: GameConfig): void => {
-  try {
-    localStorage.setItem('game_settings', JSON.stringify(config));
-  } catch (e) {
-    console.error('Storage quota exceeded');
+  for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      lastError = err;
+      if (attempt === config.maxAttempts) break;
+      await new Promise((resolve) => setTimeout(resolve, config.delayMs * attempt));
+    }
   }
+
+  throw lastError;
+};
+
+export const fetchGameState = async (id: string): Promise<any> => {
+  return withRetry(async () => {
+    const response = await fetch(`/api/v1/game/${id}`);
+    if (!response.ok) throw new Error(`Status ${response.status}`);
+    return response.json();
+  });
 };
