@@ -1,51 +1,42 @@
 # dev-toolkit-91
 
-A high-performance TypeScript utility library designed to streamline gaming backend services and data serialization. It provides robust tools for managing game state, networking events, and entity component systems.
+A robust TypeScript-based utility library designed to streamline the development of high-performance gaming applications. This toolkit simplifies state management, entity component system (ECS) orchestration, and real-time game loop synchronization.
 
 ## Features
 
-*   **Packet Serialization:** Lightning-fast binary encoding/decoding optimized for WebSocket-based game servers.
-*   **Entity State Sync:** Declarative state management for real-time synchronization between client and server.
-*   **Vector Math Utilities:** A lightweight set of 2D/3D math primitives tailored for movement logic and collision detection.
-*   **Event Emitter:** A type-safe event bus with built-in support for latency-compensated network events.
+*   **High-Frequency State Sync:** Optimized observable patterns for tracking player health, inventory, and world data with minimal latency.
+*   **ECS Engine Core:** A modular Entity-Component-System framework that facilitates decoupled game logic and scalable object composition.
+*   **Input Normalization:** A unified abstraction layer for handling concurrent keyboard, mouse, and gamepad events across browsers.
+*   **Asset Lifecycle Hooks:** Integrated utilities for preloading, caching, and unloading graphical and audio assets during scene transitions.
 
 ## Installation
 
-Install the package via npm:
+Install the package via npm or yarn:
 
 ```bash
 npm install dev-toolkit-91
-```
-
-Or using yarn:
-
-```bash
+# or
 yarn add dev-toolkit-91
 ```
 
 ## Usage
 
-Define a game entity schema and sync its position efficiently:
+Initialize a game loop and integrate a basic entity manager to handle your game objects:
 
 ```typescript
-import { GameEntity, Vector3 } from 'dev-toolkit-91';
+import { GameLoop, EntityManager } from 'dev-toolkit-91';
 
-const player = new GameEntity({
-  id: 'hero-01',
-  position: new Vector3(0, 0, 0)
+const entities = new EntityManager();
+const loop = new GameLoop((deltaTime) => {
+  entities.update(deltaTime);
+  entities.render();
 });
 
-// Update state and broadcast changes
-player.updatePosition(new Vector3(10, 5, 0));
-player.sync();
+loop.start();
 ```
-
-## Contributing
-
-We welcome contributions from the gaming community. Please ensure all code is strictly typed and passes existing test suites before submitting a pull request.
 
 ## License
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-*Distributed under the MIT License. See `LICENSE` for more information.*
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
