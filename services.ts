@@ -1,26 +1,26 @@
-export async function retryWithBackoff<T>(fn: () => Promise<T>, attempts: number = 3, delay: number = 500): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    if (attempts <= 1) throw error;
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    return retryWithBackoff(fn, attempts - 1, delay * 2);
-  }
-}
+export class GameNetworkError extends Error { constructor(public code: string, message: string) { super(message); this.name = 'GameNetworkError'; } }
 
-export const fetchGameState = async (id: string): Promise<any> => {
-  return retryWithBackoff(async () => {
-    const response = await fetch(`/api/game/${id}`);
-    if (!response.ok) throw new Error(`Status ${response.status}`);
-    return response.json();
-  });
+export const safeExecute = async <T>(task: () => Promise<T>, retries: number = 3): Promise<T | null> => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await task();
+    } catch (err) {
+      if (attempt === retries) {
+        console.error(`[dev-toolkit-91] Critical failure on attempt ${attempt}:`, err);
+        return null;
+      }
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
+    }
+  }
+  return null;
 };
 
-export const executeAction = async <T>(action: () => Promise<T>): Promise<T> => {
-  const startTime = Date.now();
+export const parseGameState = (data: unknown): Record<string, any> => {
   try {
-    return await retryWithBackoff(action);
-  } finally {
-    console.debug(`network transaction took ${Date.now() - startTime}ms`);
+    if (typeof data !== 'string') throw new Error('Invalid payload');
+    const parsed = JSON.parse(data);
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch {
+    return { status: 'corrupted', timestamp: Date.now() };
   }
 };
